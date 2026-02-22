@@ -26,7 +26,6 @@ export default async function MarketingLayout({
         navigation={navigation}
         activeConference={settings?.activeConference}
         secondaryConference={settings?.secondaryConference}
-        logo={settings?.logo}
       />
       <main className="min-h-screen">{children}</main>
       <SiteFooter footer={footer} />

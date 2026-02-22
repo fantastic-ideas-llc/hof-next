@@ -59,7 +59,7 @@ export function ExhibitorNav({
       {/* Mobile toggle */}
       <button
         type="button"
-        className="fixed bottom-4 right-4 z-50 rounded-full bg-orange-500 p-3 text-white shadow-lg lg:hidden"
+        className="fixed bottom-4 right-4 z-50 rounded-full bg-primary p-3 text-white shadow-lg lg:hidden"
         onClick={() => setMobileOpen(!mobileOpen)}
         aria-label="Toggle sidebar"
       >
@@ -95,7 +95,7 @@ export function ExhibitorNav({
                 height={36}
               />
             ) : (
-              <span className="text-lg font-bold">Hall of Flowers</span>
+              <span className="text-lg">Hall of Flowers</span>
             )}
           </Link>
           {activeConference && (
@@ -111,7 +111,7 @@ export function ExhibitorNav({
             href="/"
             className={`block rounded-lg px-3 py-2 text-sm font-medium ${
               pathname === "/" || pathname === "/exhibitor"
-                ? "bg-orange-50 text-orange-700"
+                ? "bg-primary/10 text-primary-hover"
                 : "text-zinc-700 hover:bg-zinc-100"
             }`}
             onClick={() => setMobileOpen(false)}
@@ -126,7 +126,7 @@ export function ExhibitorNav({
               href={item.link}
               className={`block rounded-lg px-3 py-2 text-sm font-medium ${
                 pathname === item.link
-                  ? "bg-orange-50 text-orange-700"
+                  ? "bg-primary/10 text-primary-hover"
                   : "text-zinc-700 hover:bg-zinc-100"
               }`}
               onClick={() => setMobileOpen(false)}
@@ -149,7 +149,7 @@ export function ExhibitorNav({
                     href={href}
                     className={`block rounded-lg px-3 py-2 text-sm ${
                       pathname === href
-                        ? "bg-orange-50 font-medium text-orange-700"
+                        ? "bg-primary/10 font-medium text-primary-hover"
                         : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
                     }`}
                     onClick={() => setMobileOpen(false)}

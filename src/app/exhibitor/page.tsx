@@ -2,6 +2,7 @@ import { sanityClient } from "@/lib/sanity/client";
 import { siteSettingsQuery, exhibitorPageBySlugQuery } from "@/lib/sanity/queries";
 import type { SiteSettings, ExhibitorPage } from "@/lib/sanity/types";
 import { PageBuilder } from "@/components/page-builder/PageBuilder";
+import { buildMetadata } from "@/lib/sanity/metadata";
 import type { Metadata } from "next";
 
 export const revalidate = 60;
@@ -11,7 +12,6 @@ async function getExhibitorHomepage(): Promise<ExhibitorPage | null> {
   const conferenceId = settings?.activeConference?._id;
   if (!conferenceId) return null;
 
-  // The exhibitor homepage is the exhibitor page with slug "index" or the first general page
   return sanityClient.fetch<ExhibitorPage | null>(
     exhibitorPageBySlugQuery,
     { slug: "index", conferenceId }
@@ -22,11 +22,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const page = await getExhibitorHomepage();
   if (!page) return { title: "Exhibitor Portal" };
 
-  const seo = page.seo;
-  return {
-    title: seo?.metaTitle || page.title,
-    description: seo?.metaDescription,
-  };
+  return buildMetadata(page.title, page.seo);
 }
 
 export default async function ExhibitorHomePage() {

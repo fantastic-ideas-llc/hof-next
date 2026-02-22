@@ -14,7 +14,7 @@ export function FormSection({ data }: FormSectionProps) {
     <section className="px-4 py-16 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-3xl">
         {heading && (
-          <h2 className="mb-4 text-3xl font-bold tracking-tight">{heading}</h2>
+          <h2 className="mb-4 text-3xl tracking-tight">{heading}</h2>
         )}
 
         {description && (

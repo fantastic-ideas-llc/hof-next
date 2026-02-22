@@ -12,7 +12,7 @@ const toneMap: Record<string, string> = {
   neutral: "bg-white",
   subtle: "bg-zinc-50",
   bold: "bg-zinc-900 text-white",
-  brand: "bg-orange-50",
+  brand: "bg-primary/10",
 };
 
 export function TwoUp({ data }: TwoUpProps) {
@@ -63,7 +63,7 @@ export function TwoUp({ data }: TwoUpProps) {
                     href={cta.url}
                     className={`rounded-full px-6 py-3 text-sm font-medium transition-colors ${
                       cta.variant === "primary"
-                        ? "bg-orange-500 text-white hover:bg-orange-600"
+                        ? "bg-primary text-white hover:bg-primary-hover"
                         : tone === "bold"
                           ? "border border-white text-white hover:bg-white/10"
                           : "border border-zinc-300 text-zinc-700 hover:bg-zinc-100"

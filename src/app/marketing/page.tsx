@@ -2,6 +2,7 @@ import { sanityClient } from "@/lib/sanity/client";
 import { siteSettingsQuery } from "@/lib/sanity/queries";
 import type { SiteSettings } from "@/lib/sanity/types";
 import { PageBuilder } from "@/components/page-builder/PageBuilder";
+import { buildMetadata } from "@/lib/sanity/metadata";
 import type { Metadata } from "next";
 
 export const revalidate = 60;
@@ -15,11 +16,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const page = await getHomepage();
   if (!page) return {};
 
-  const seo = page.seo;
-  return {
-    title: seo?.metaTitle || page.title,
-    description: seo?.metaDescription,
-  };
+  return buildMetadata(page.title, page.seo);
 }
 
 export default async function HomePage() {

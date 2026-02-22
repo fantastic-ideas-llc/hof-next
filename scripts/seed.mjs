@@ -1415,6 +1415,11 @@ const footers = [
         platform: "YouTube",
         url: "https://www.youtube.com/@hallofflowers",
       },
+      {
+        _key: generateKey(),
+        platform: "TikTok",
+        url: "https://www.tiktok.com/@hallofflowers",
+      },
     ],
     legalText: [
       textBlock("CEO14-0000002-LIC"),

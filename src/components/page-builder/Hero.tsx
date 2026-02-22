@@ -85,7 +85,7 @@ export function Hero({ data }: HeroProps) {
                 href={cta.url}
                 className={`rounded-full px-6 py-3 text-sm font-medium transition-colors ${
                   cta.variant === "primary"
-                    ? "bg-orange-500 text-white hover:bg-orange-600"
+                    ? "bg-primary text-white hover:bg-primary-hover"
                     : "border border-white text-white hover:bg-white/10"
                 }`}
               >

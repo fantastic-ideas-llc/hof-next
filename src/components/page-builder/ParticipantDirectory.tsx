@@ -50,7 +50,7 @@ export function ParticipantDirectory({ data }: ParticipantDirectoryProps) {
   return (
     <section className="px-4 py-16 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-4xl">
-        <h2 className="mb-2 text-3xl font-bold tracking-tight">
+        <h2 className="mb-2 text-3xl tracking-tight">
           {participantList.title}
         </h2>
         <p className="mb-8 text-zinc-500">
@@ -65,7 +65,7 @@ export function ParticipantDirectory({ data }: ParticipantDirectoryProps) {
               <a
                 key={letter}
                 href={`#letter-${letter}`}
-                className="flex h-8 w-8 items-center justify-center rounded-md border border-zinc-200 text-sm font-medium text-zinc-700 transition-colors hover:bg-orange-50 hover:border-orange-300"
+                className="flex h-8 w-8 items-center justify-center rounded-md border border-zinc-200 text-sm font-medium text-zinc-700 transition-colors hover:bg-primary/10 hover:border-primary"
               >
                 {letter}
               </a>
@@ -77,7 +77,7 @@ export function ParticipantDirectory({ data }: ParticipantDirectoryProps) {
         <div className="space-y-8">
           {grouped.map(({ letter, names }) => (
             <div key={letter} id={`letter-${letter}`}>
-              <h3 className="mb-3 border-b border-zinc-200 pb-2 text-2xl font-bold text-zinc-900">
+              <h3 className="mb-3 border-b border-zinc-200 pb-2 text-2xl text-zinc-900">
                 {letter}
               </h3>
               <p className="leading-relaxed text-zinc-700">

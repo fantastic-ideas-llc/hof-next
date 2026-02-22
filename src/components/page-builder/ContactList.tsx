@@ -32,7 +32,7 @@ export function ContactList({ data }: ContactListProps) {
     return (
       <section className="px-4 py-12 text-center text-zinc-500 sm:px-6">
         {heading && (
-          <h2 className="mb-4 text-3xl font-bold tracking-tight text-zinc-900">
+          <h2 className="mb-4 text-3xl tracking-tight text-zinc-900">
             {heading}
           </h2>
         )}
@@ -53,7 +53,7 @@ export function ContactList({ data }: ContactListProps) {
     <section className="px-4 py-16 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-6xl">
         {heading && (
-          <h2 className="mb-8 text-3xl font-bold tracking-tight">{heading}</h2>
+          <h2 className="mb-8 text-3xl tracking-tight">{heading}</h2>
         )}
 
         <div className="space-y-10">
@@ -106,7 +106,7 @@ function ContactCard({ contact }: { contact: Contact }) {
         {contact.email && (
           <a
             href={`mailto:${contact.email}`}
-            className="mt-1 block text-sm text-orange-600 hover:text-orange-700"
+            className="mt-1 block text-sm text-primary-hover hover:text-primary-hover"
           >
             {contact.email}
           </a>
@@ -150,7 +150,7 @@ function ContactRow({ contact }: { contact: Contact }) {
         {contact.email && (
           <a
             href={`mailto:${contact.email}`}
-            className="block text-sm text-orange-600 hover:text-orange-700"
+            className="block text-sm text-primary-hover hover:text-primary-hover"
           >
             {contact.email}
           </a>

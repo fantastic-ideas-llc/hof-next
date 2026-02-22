@@ -25,7 +25,7 @@ export function Gallery({ data }: GalleryProps) {
     <section className="px-4 py-16 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl">
         {heading && (
-          <h2 className="mb-8 text-3xl font-bold tracking-tight">{heading}</h2>
+          <h2 className="mb-8 text-3xl tracking-tight">{heading}</h2>
         )}
 
         {/* Masonry grid */}

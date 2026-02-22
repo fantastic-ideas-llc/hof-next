@@ -62,7 +62,7 @@ export function NewsletterSignup({ data }: NewsletterSignupProps) {
     <section className="px-4 py-16 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-lg">
         {heading && (
-          <h2 className="mb-4 text-center text-3xl font-bold tracking-tight">
+          <h2 className="mb-4 text-center text-3xl tracking-tight">
             {heading}
           </h2>
         )}
@@ -87,7 +87,7 @@ export function NewsletterSignup({ data }: NewsletterSignupProps) {
                 name="firstName"
                 type="text"
                 required
-                className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
               />
             </div>
             <div>
@@ -102,7 +102,7 @@ export function NewsletterSignup({ data }: NewsletterSignupProps) {
                 name="lastName"
                 type="text"
                 required
-                className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
               />
             </div>
           </div>
@@ -119,7 +119,7 @@ export function NewsletterSignup({ data }: NewsletterSignupProps) {
               name="email"
               type="email"
               required
-              className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+              className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
             />
           </div>
 
@@ -134,7 +134,7 @@ export function NewsletterSignup({ data }: NewsletterSignupProps) {
               <select
                 id="newsletter-interest"
                 name="interest"
-                className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
               >
                 {interestOptions.map((option) => (
                   <option key={option._key} value={option.value}>
@@ -148,7 +148,7 @@ export function NewsletterSignup({ data }: NewsletterSignupProps) {
           <button
             type="submit"
             disabled={submitting}
-            className="w-full rounded-full bg-orange-500 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
+            className="w-full rounded-full bg-primary px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
           >
             {submitting ? "Subscribing..." : "Subscribe"}
           </button>

@@ -10,12 +10,12 @@ import { urlFor } from "@/lib/sanity/client";
 const components: PortableTextComponents = {
   block: {
     h1: ({ children }) => (
-      <h1 className="mb-4 text-4xl font-bold tracking-tight md:text-5xl">
+      <h1 className="mb-4 text-4xl tracking-tight md:text-5xl">
         {children}
       </h1>
     ),
     h2: ({ children }) => (
-      <h2 className="mb-3 text-3xl font-bold tracking-tight md:text-4xl">
+      <h2 className="mb-3 text-3xl tracking-tight md:text-4xl">
         {children}
       </h2>
     ),
@@ -26,7 +26,7 @@ const components: PortableTextComponents = {
       <h4 className="mb-2 text-xl font-semibold">{children}</h4>
     ),
     blockquote: ({ children }) => (
-      <blockquote className="my-4 border-l-4 border-orange-500 pl-4 italic text-zinc-600">
+      <blockquote className="my-4 border-l-4 border-primary pl-4 italic text-zinc-600">
         {children}
       </blockquote>
     ),
@@ -35,7 +35,7 @@ const components: PortableTextComponents = {
     ),
   },
   marks: {
-    strong: ({ children }) => <strong className="font-bold">{children}</strong>,
+    strong: ({ children }) => <strong>{children}</strong>,
     em: ({ children }) => <em className="italic">{children}</em>,
     underline: ({ children }) => <span className="underline">{children}</span>,
     link: ({ children, value }) => {
@@ -49,7 +49,7 @@ const components: PortableTextComponents = {
             href={href}
             target={value?.openInNewTab ? "_blank" : undefined}
             rel={value?.openInNewTab ? "noopener noreferrer" : undefined}
-            className="text-orange-600 underline hover:text-orange-700"
+            className="text-primary-hover underline hover:text-primary-hover"
           >
             {children}
           </a>
@@ -59,7 +59,7 @@ const components: PortableTextComponents = {
       return (
         <Link
           href={href}
-          className="text-orange-600 underline hover:text-orange-700"
+          className="text-primary-hover underline hover:text-primary-hover"
         >
           {children}
         </Link>

@@ -86,6 +86,7 @@ export const footer = defineType({
                   { title: "X (Twitter)", value: "x" },
                   { title: "YouTube", value: "youtube" },
                   { title: "Facebook", value: "facebook" },
+                  { title: "TikTok", value: "tiktok" },
                 ],
               },
               validation: (rule) => rule.required(),

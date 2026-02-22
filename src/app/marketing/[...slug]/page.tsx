@@ -3,6 +3,7 @@ import { sanityClient } from "@/lib/sanity/client";
 import { pageBySlugQuery, allPageSlugsQuery } from "@/lib/sanity/queries";
 import type { Page } from "@/lib/sanity/types";
 import { PageBuilder } from "@/components/page-builder/PageBuilder";
+import { buildMetadata } from "@/lib/sanity/metadata";
 import type { Metadata } from "next";
 
 export const revalidate = 60;
@@ -31,11 +32,7 @@ export async function generateMetadata(props: PageProps): Promise<Metadata> {
 
   if (!page) return {};
 
-  const seo = page.seo;
-  return {
-    title: seo?.metaTitle || page.title,
-    description: seo?.metaDescription,
-  };
+  return buildMetadata(page.title, page.seo);
 }
 
 export default async function CatchAllPage(props: PageProps) {

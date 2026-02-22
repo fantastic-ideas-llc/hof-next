@@ -50,7 +50,7 @@ export function ConferenceCards({ data }: ConferenceCardsProps) {
     <section className="px-4 py-16 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl">
         {heading && (
-          <h2 className="mb-8 text-center text-3xl font-bold tracking-tight">
+          <h2 className="mb-8 text-center text-3xl tracking-tight">
             {heading}
           </h2>
         )}
@@ -111,7 +111,7 @@ function ConferenceCard({
               {statusLabels[conference.status] || conference.status}
             </span>
           )}
-          <h3 className="text-2xl font-bold text-white">{conference.title}</h3>
+          <h3 className="text-2xl text-white">{conference.title}</h3>
           {conference.location && (
             <p className="mt-1 text-sm text-zinc-300">
               {conference.location.city}, {conference.location.state}
@@ -134,7 +134,7 @@ function ConferenceCard({
   return (
     <Link
       href={href}
-      className="group flex items-center gap-4 rounded-xl border border-zinc-200 p-4 transition-colors hover:border-orange-300 hover:bg-orange-50"
+      className="group flex items-center gap-4 rounded-xl border border-zinc-200 p-4 transition-colors hover:border-primary hover:bg-primary/10"
     >
       {conference.heroImage && (
         <div className="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-lg">

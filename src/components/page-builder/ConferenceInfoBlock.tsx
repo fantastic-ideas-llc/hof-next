@@ -50,7 +50,7 @@ export function ConferenceInfoBlock({ data }: ConferenceInfoBlockProps) {
   return (
     <section className="px-4 py-16 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-4xl">
-        <h2 className="mb-8 text-3xl font-bold tracking-tight">
+        <h2 className="mb-8 text-3xl tracking-tight">
           {conference.title}
         </h2>
 
@@ -125,7 +125,7 @@ export function ConferenceInfoBlock({ data }: ConferenceInfoBlockProps) {
                       {contact.email && (
                         <a
                           href={`mailto:${contact.email}`}
-                          className="mt-1 block text-sm text-orange-600 hover:text-orange-700"
+                          className="mt-1 block text-sm text-primary-hover hover:text-primary-hover"
                         >
                           {contact.email}
                         </a>
@@ -148,7 +148,7 @@ export function ConferenceInfoBlock({ data }: ConferenceInfoBlockProps) {
                     <Link
                       key={category}
                       href={`/${category}`}
-                      className="flex items-center justify-between rounded-lg border border-zinc-200 px-4 py-3 transition-colors hover:border-orange-300 hover:bg-orange-50"
+                      className="flex items-center justify-between rounded-lg border border-zinc-200 px-4 py-3 transition-colors hover:border-primary hover:bg-primary/10"
                     >
                       <span className="font-medium">
                         {exhibitorPageLabels[category] || category}
