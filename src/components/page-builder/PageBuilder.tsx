@@ -1,4 +1,9 @@
 import type { PageBuilderComponent } from "@/lib/sanity/types";
+import { Hero } from "./Hero";
+import { CopyBlock } from "./CopyBlock";
+import { MediaEmbed } from "./MediaEmbed";
+import { TwoUp } from "./TwoUp";
+import { Gallery } from "./Gallery";
 
 interface PageBuilderProps {
   components: PageBuilderComponent[] | undefined | null;
@@ -8,8 +13,9 @@ interface PageBuilderProps {
  * Renders an array of page builder components.
  * Each component type maps to a React component.
  *
- * Component implementations are stubbed here — full implementations
- * come in Epic 3 (core) and Epic 4 (conference & data).
+ * Core components (Hero, CopyBlock, MediaEmbed, TwoUp, Gallery) are
+ * fully implemented. Conference, data, and interactive components
+ * render as stubs until Epic 4 and 6.
  */
 export function PageBuilder({ components }: PageBuilderProps) {
   if (!components || components.length === 0) {
@@ -28,15 +34,15 @@ export function PageBuilder({ components }: PageBuilderProps) {
 function PageBuilderBlock({ component }: { component: PageBuilderComponent }) {
   switch (component._type) {
     case "hero":
-      return <ComponentStub type="Hero" data={component} />;
+      return <Hero data={component} />;
     case "copyBlock":
-      return <ComponentStub type="Copy Block" data={component} />;
+      return <CopyBlock data={component} />;
     case "mediaEmbed":
-      return <ComponentStub type="Media Embed" data={component} />;
+      return <MediaEmbed data={component} />;
     case "twoUp":
-      return <ComponentStub type="Two-Up" data={component} />;
+      return <TwoUp data={component} />;
     case "gallery":
-      return <ComponentStub type="Gallery" data={component} />;
+      return <Gallery data={component} />;
     case "conferenceCards":
       return <ComponentStub type="Conference Cards" data={component} />;
     case "conferenceInfoBlock":
@@ -58,8 +64,7 @@ function PageBuilderBlock({ component }: { component: PageBuilderComponent }) {
 }
 
 /**
- * Temporary stub component that renders a placeholder
- * until the real component implementations are built.
+ * Temporary stub for components not yet implemented.
  */
 function ComponentStub({
   type,
