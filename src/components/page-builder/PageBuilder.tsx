@@ -4,6 +4,10 @@ import { CopyBlock } from "./CopyBlock";
 import { MediaEmbed } from "./MediaEmbed";
 import { TwoUp } from "./TwoUp";
 import { Gallery } from "./Gallery";
+import { ConferenceCards } from "./ConferenceCards";
+import { ConferenceInfoBlock } from "./ConferenceInfoBlock";
+import { ContactList } from "./ContactList";
+import { ParticipantDirectory } from "./ParticipantDirectory";
 
 interface PageBuilderProps {
   components: PageBuilderComponent[] | undefined | null;
@@ -11,11 +15,9 @@ interface PageBuilderProps {
 
 /**
  * Renders an array of page builder components.
- * Each component type maps to a React component.
- *
- * Core components (Hero, CopyBlock, MediaEmbed, TwoUp, Gallery) are
- * fully implemented. Conference, data, and interactive components
- * render as stubs until Epic 4 and 6.
+ * Core + conference/data components are fully implemented.
+ * Interactive components (formSection, newsletterSignup) remain as stubs
+ * until Epic 6.
  */
 export function PageBuilder({ components }: PageBuilderProps) {
   if (!components || components.length === 0) {
@@ -44,13 +46,13 @@ function PageBuilderBlock({ component }: { component: PageBuilderComponent }) {
     case "gallery":
       return <Gallery data={component} />;
     case "conferenceCards":
-      return <ComponentStub type="Conference Cards" data={component} />;
+      return <ConferenceCards data={component} />;
     case "conferenceInfoBlock":
-      return <ComponentStub type="Conference Info Block" data={component} />;
+      return <ConferenceInfoBlock data={component} />;
     case "contactList":
-      return <ComponentStub type="Contact List" data={component} />;
+      return <ContactList data={component} />;
     case "participantDirectory":
-      return <ComponentStub type="Participant Directory" data={component} />;
+      return <ParticipantDirectory data={component} />;
     case "formSection":
       return <ComponentStub type="Form Section" data={component} />;
     case "newsletterSignup":
