@@ -8,6 +8,8 @@ import { ConferenceCards } from "./ConferenceCards";
 import { ConferenceInfoBlock } from "./ConferenceInfoBlock";
 import { ContactList } from "./ContactList";
 import { ParticipantDirectory } from "./ParticipantDirectory";
+import { FormSection } from "./FormSection";
+import { NewsletterSignup } from "./NewsletterSignup";
 
 interface PageBuilderProps {
   components: PageBuilderComponent[] | undefined | null;
@@ -15,9 +17,7 @@ interface PageBuilderProps {
 
 /**
  * Renders an array of page builder components.
- * Core + conference/data components are fully implemented.
- * Interactive components (formSection, newsletterSignup) remain as stubs
- * until Epic 6.
+ * All 11 component types are fully implemented.
  */
 export function PageBuilder({ components }: PageBuilderProps) {
   if (!components || components.length === 0) {
@@ -54,33 +54,13 @@ function PageBuilderBlock({ component }: { component: PageBuilderComponent }) {
     case "participantDirectory":
       return <ParticipantDirectory data={component} />;
     case "formSection":
-      return <ComponentStub type="Form Section" data={component} />;
+      return <FormSection data={component} />;
     case "newsletterSignup":
-      return <ComponentStub type="Newsletter Signup" data={component} />;
+      return <NewsletterSignup data={component} />;
     default: {
       const _exhaustiveCheck: never = component;
       console.warn(`Unknown component type: ${(_exhaustiveCheck as PageBuilderComponent)._type}`);
       return null;
     }
   }
-}
-
-/**
- * Temporary stub for components not yet implemented.
- */
-function ComponentStub({
-  type,
-  data,
-}: {
-  type: string;
-  data: PageBuilderComponent;
-}) {
-  return (
-    <section className="border-b border-dashed border-zinc-300 bg-zinc-50 px-4 py-12 text-center">
-      <p className="text-sm font-medium uppercase tracking-wider text-zinc-400">
-        {type}
-      </p>
-      <p className="mt-1 text-xs text-zinc-300">{data._key}</p>
-    </section>
-  );
 }
