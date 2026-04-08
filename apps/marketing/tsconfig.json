@@ -1,0 +1,17 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"paths": {
+			"@/*": ["./*"],
+			"@hof/sanity": ["../../packages/sanity/src/index.ts"],
+			"@hof/sanity/*": ["../../packages/sanity/src/*"]
+		},
+		"plugins": [
+			{
+				"name": "next"
+			}
+		]
+	},
+	"include": ["**/*.ts", "**/*.tsx", ".next/types/**/*.ts", "next-env.d.ts"],
+	"exclude": ["node_modules"]
+}

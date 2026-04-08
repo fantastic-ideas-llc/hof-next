@@ -1,0 +1,13 @@
+.DS_Store
+.idea
+.turbo
+.vercel
+*.log
+node_modules
+.env
+.env.local
+.env.*.local
+.next
+dist
+coverage
+

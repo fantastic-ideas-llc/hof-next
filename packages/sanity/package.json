@@ -1,0 +1,15 @@
+{
+	"name": "@hof/sanity",
+	"private": true,
+	"version": "0.1.0",
+	"type": "module",
+	"main": "./src/index.ts",
+	"types": "./src/index.ts",
+	"exports": {
+		".": "./src/index.ts",
+		"./studio": "./src/studio.ts"
+	},
+	"peerDependencies": {
+		"sanity": "5.19.0"
+	}
+}

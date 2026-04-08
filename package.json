@@ -1,0 +1,25 @@
+{
+	"name": "hall-of-flowers-web",
+	"private": true,
+	"packageManager": "bun@1.3.9",
+	"workspaces": [
+		"apps/*",
+		"packages/*"
+	],
+	"scripts": {
+		"dev:marketing": "bun run --cwd apps/marketing dev",
+		"dev:exhibitors": "bun run --cwd apps/exhibitors dev",
+		"build": "bun run build:marketing && bun run build:exhibitors",
+		"build:marketing": "bun run --cwd apps/marketing build",
+		"build:exhibitors": "bun run --cwd apps/exhibitors build",
+		"lint": "biome check .",
+		"format": "biome check --write ."
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.4.10",
+		"@types/node": "20.19.18",
+		"@types/react": "19.2.2",
+		"@types/react-dom": "19.2.2",
+		"typescript": "5.8.3"
+	}
+}
