@@ -6,6 +6,20 @@ export {
 	venueType,
 } from "./schema/block-content";
 export { boothType } from "./schema/booth-type";
+export {
+	accordionBlockType,
+	accordionItemType,
+	bannerBlockType,
+	cardGridType,
+	cardItemType,
+	fileItemType,
+	filesBlockType,
+	imageZoomType,
+	stepItemType,
+	stepsBlockType,
+	tabItemType,
+	tabsBlockType,
+} from "./schema/components";
 export { conferenceType } from "./schema/conference";
 export { exhibitorDocType } from "./schema/exhibitor-doc";
 export { exhibitorFaqType } from "./schema/exhibitor-faq";
@@ -22,6 +36,20 @@ import {
 	venueType,
 } from "./schema/block-content";
 import { boothType } from "./schema/booth-type";
+import {
+	accordionBlockType,
+	accordionItemType,
+	bannerBlockType,
+	cardGridType,
+	cardItemType,
+	fileItemType,
+	filesBlockType,
+	imageZoomType,
+	stepItemType,
+	stepsBlockType,
+	tabItemType,
+	tabsBlockType,
+} from "./schema/components";
 import { conferenceType } from "./schema/conference";
 import { exhibitorDocType } from "./schema/exhibitor-doc";
 import { exhibitorFaqType } from "./schema/exhibitor-faq";
@@ -42,4 +70,16 @@ export const schemaTypes = [
 	exhibitorFaqType,
 	boothType,
 	faqType,
+	stepItemType,
+	stepsBlockType,
+	tabItemType,
+	tabsBlockType,
+	accordionBlockType,
+	accordionItemType,
+	cardGridType,
+	cardItemType,
+	bannerBlockType,
+	imageZoomType,
+	fileItemType,
+	filesBlockType,
 ];

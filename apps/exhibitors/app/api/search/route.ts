@@ -1,17 +1,37 @@
-import { NextResponse } from "next/server";
+import { createSearchAPI } from "fumadocs-core/search/server";
+import type { NextRequest } from "next/server";
 
-import { searchConference } from "@/lib/data";
+import { getBoothPage, getConferenceBundle, getDocPage, getFaqPage } from "@/lib/data";
+import { buildFullSearchIndex } from "@/lib/search-index";
 
-export async function GET(request: Request) {
-	const { searchParams } = new URL(request.url);
-	const conference = searchParams.get("conference");
-	const query = searchParams.get("query") ?? "";
+export async function GET(request: NextRequest) {
+	const conferenceSlug = request.nextUrl.searchParams.get("conference");
 
-	if (!conference) {
-		return NextResponse.json([], { status: 200 });
+	if (!conferenceSlug) {
+		return Response.json([]);
 	}
 
-	const results = await searchConference(conference, query);
+	const bundle = await getConferenceBundle(conferenceSlug);
+	if (!bundle) {
+		return Response.json([]);
+	}
 
-	return NextResponse.json(results);
+	const indexes = await buildFullSearchIndex(
+		conferenceSlug,
+		bundle,
+		(slug) => getDocPage(conferenceSlug, slug),
+		(slug) => getBoothPage(conferenceSlug, slug),
+		(slug) => getFaqPage(conferenceSlug, slug),
+	);
+
+	const { GET: searchGET } = createSearchAPI("advanced", {
+		indexes,
+	});
+
+	// Forward the query param to the fumadocs search handler
+	const searchUrl = new URL(request.url);
+	searchUrl.searchParams.delete("conference");
+	const searchRequest = new Request(searchUrl, request);
+
+	return searchGET(searchRequest);
 }

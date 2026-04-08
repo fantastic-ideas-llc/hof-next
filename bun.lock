@@ -15,11 +15,11 @@
     "apps/exhibitors": {
       "name": "@hof/exhibitors",
       "dependencies": {
-        "@hof/fonts": "workspace:*",
         "@hof/sanity": "workspace:*",
         "@portabletext/react": "6.0.3",
         "@sanity/client": "7.20.0",
         "@sanity/image-url": "1.1.0",
+        "@sanity/vision": "5.19.0",
         "@tailwindcss/postcss": "4.1.13",
         "fumadocs-core": "16.7.10",
         "fumadocs-ui": "16.7.10",
@@ -27,6 +27,7 @@
         "next-sanity": "12.2.1",
         "react": "19.2.0",
         "react-dom": "19.2.0",
+        "sanity": "5.19.0",
         "shiki": "4.0.2",
         "tailwindcss": "4.1.13",
       },
@@ -34,7 +35,6 @@
     "apps/marketing": {
       "name": "@hof/marketing",
       "dependencies": {
-        "@hof/fonts": "workspace:*",
         "@hof/sanity": "workspace:*",
         "@sanity/vision": "5.19.0",
         "@tailwindcss/postcss": "4.1.13",
@@ -48,9 +48,6 @@
     },
     "packages/fonts": {
       "name": "@hof/fonts",
-      "peerDependencies": {
-        "next": "*",
-      },
     },
     "packages/sanity": {
       "name": "@hof/sanity",

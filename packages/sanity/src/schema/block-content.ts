@@ -213,5 +213,12 @@ export const blockContentType = defineType({
 		}),
 		defineArrayMember({ type: "callout" }),
 		defineArrayMember({ type: "codeBlock" }),
+		defineArrayMember({ type: "stepsBlock" }),
+		defineArrayMember({ type: "tabsBlock" }),
+		defineArrayMember({ type: "accordionBlock" }),
+		defineArrayMember({ type: "cardGrid" }),
+		defineArrayMember({ type: "bannerBlock" }),
+		defineArrayMember({ type: "imageZoom" }),
+		defineArrayMember({ type: "filesBlock" }),
 	],
 });

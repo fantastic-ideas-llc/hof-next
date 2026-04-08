@@ -1,7 +1,14 @@
 import type { TOCItemType } from "fumadocs-core/toc";
+import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
+import { Banner } from "fumadocs-ui/components/banner";
 import { Callout } from "fumadocs-ui/components/callout";
+import { Card, Cards } from "fumadocs-ui/components/card";
 import { ServerCodeBlock } from "fumadocs-ui/components/codeblock.rsc";
+import { File, Files, Folder } from "fumadocs-ui/components/files";
 import { Heading } from "fumadocs-ui/components/heading";
+import { ImageZoom } from "fumadocs-ui/components/image-zoom";
+import { Step, Steps } from "fumadocs-ui/components/steps";
+import { Tab, Tabs } from "fumadocs-ui/components/tabs";
 import Image from "next/image";
 import Link from "next/link";
 
@@ -20,20 +27,38 @@ type Span = {
 	text?: string;
 };
 
+type FileNode = {
+	_key?: string;
+	children?: FileNode[];
+	isFolder?: boolean;
+	name?: string;
+};
+
 type Block = {
 	_key?: string;
 	_type?: string;
 	alt?: string;
 	body?: string;
 	caption?: string;
+	cards?: { _key?: string; description?: string; href?: string; title?: string }[];
+	changeLayout?: boolean;
 	children?: Span[];
 	code?: string;
+	content?: string;
 	filename?: string;
+	files?: FileNode[];
+	height?: number;
+	image?: unknown;
+	items?: { _key?: string; body?: string; title?: string }[];
 	language?: string;
 	markDefs?: MarkDefinition[];
+	steps?: { _key?: string; body?: string; title?: string }[];
 	style?: string;
+	tabs?: { _key?: string; body?: string; label?: string }[];
 	title?: string;
 	tone?: "error" | "idea" | "info" | "success" | "warning";
+	variant?: "normal" | "rainbow";
+	width?: number;
 };
 
 function getText(block: Block) {
@@ -116,6 +141,98 @@ async function renderPortableNode(block: Block, index: number) {
 					</figcaption>
 				) : null}
 			</figure>
+		);
+	}
+
+	if (block._type === "stepsBlock" && block.steps) {
+		return (
+			<Steps key={block._key ?? index}>
+				{block.steps.map((step, i) => (
+					<Step key={step._key ?? i}>
+						<h4>{step.title}</h4>
+						{step.body ? <p>{step.body}</p> : null}
+					</Step>
+				))}
+			</Steps>
+		);
+	}
+
+	if (block._type === "tabsBlock" && block.tabs) {
+		return (
+			<Tabs key={block._key ?? index} items={block.tabs.map((t) => t.label ?? "")}>
+				{block.tabs.map((tab, i) => (
+					<Tab key={tab._key ?? i} value={tab.label ?? ""}>
+						{tab.body ? <p className="leading-7">{tab.body}</p> : null}
+					</Tab>
+				))}
+			</Tabs>
+		);
+	}
+
+	if (block._type === "accordionBlock" && block.items) {
+		return (
+			<Accordions key={block._key ?? index} type="single" collapsible>
+				{block.items.map((item, i) => (
+					<Accordion key={item._key ?? i} title={item.title ?? ""}>
+						{item.body ? <p className="leading-7">{item.body}</p> : null}
+					</Accordion>
+				))}
+			</Accordions>
+		);
+	}
+
+	if (block._type === "cardGrid" && block.cards) {
+		return (
+			<Cards key={block._key ?? index}>
+				{block.cards.map((card, i) => (
+					<Card key={card._key ?? i} href={card.href} title={card.title ?? ""}>
+						{card.description ?? ""}
+					</Card>
+				))}
+			</Cards>
+		);
+	}
+
+	if (block._type === "bannerBlock" && block.content) {
+		return (
+			<Banner
+				key={block._key ?? index}
+				variant={block.variant === "rainbow" ? "rainbow" : undefined}
+				changeLayout={block.changeLayout}
+			>
+				{block.content}
+			</Banner>
+		);
+	}
+
+	if (block._type === "imageZoom") {
+		const image = buildImageUrl(block.image as Record<string, unknown>)
+			?.width(block.width ?? 1600)
+			.url();
+		if (!image) return null;
+
+		return (
+			<figure key={block._key ?? index} className="my-8">
+				<ImageZoom
+					alt={block.alt ?? ""}
+					height={block.height ?? 900}
+					src={image}
+					width={block.width ?? 1600}
+				/>
+				{block.caption ? (
+					<figcaption className="mt-3 text-center text-sm text-[var(--muted-foreground)]">
+						{block.caption}
+					</figcaption>
+				) : null}
+			</figure>
+		);
+	}
+
+	if (block._type === "filesBlock" && block.files) {
+		return (
+			<Files key={block._key ?? index}>
+				{block.files.map((node, i) => renderFileNode(node, i))}
+			</Files>
 		);
 	}
 
@@ -206,6 +323,17 @@ function renderChildren(block: Block) {
 
 		return <span key={child._key ?? index}>{node}</span>;
 	});
+}
+
+function renderFileNode(node: FileNode, index: number): React.ReactNode {
+	if (node.isFolder) {
+		return (
+			<Folder key={node._key ?? index} name={node.name ?? "folder"}>
+				{(node.children ?? []).map((child, i) => renderFileNode(child, i))}
+			</Folder>
+		);
+	}
+	return <File key={node._key ?? index} name={node.name ?? "file"} />;
 }
 
 function slugify(value: string) {

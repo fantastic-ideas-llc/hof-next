@@ -3,7 +3,8 @@ import Image from "next/image";
 import { notFound } from "next/navigation";
 
 import { ConferenceSearchProvider } from "@/components/conference-search-provider";
-import { getConferenceBundle } from "@/lib/data";
+import { ConferenceSwitcher } from "@/components/conference-switcher";
+import { getActiveConferences, getConferenceBundle } from "@/lib/data";
 import { createConferenceTree } from "@/lib/page-tree";
 
 export default async function ConferenceLayout({
@@ -14,11 +15,20 @@ export default async function ConferenceLayout({
 	params: Promise<{ conference: string }>;
 }>) {
 	const { conference: conferenceSlug } = await params;
-	const bundle = await getConferenceBundle(conferenceSlug);
+	const [bundle, allConferences] = await Promise.all([
+		getConferenceBundle(conferenceSlug),
+		getActiveConferences(),
+	]);
 
 	if (!bundle) notFound();
 
 	const tree = createConferenceTree(bundle);
+
+	const switcherOptions = allConferences.map((c) => ({
+		city: c.city,
+		name: c.name,
+		slug: c.slug,
+	}));
 
 	return (
 		<ConferenceSearchProvider conferenceSlug={conferenceSlug}>
@@ -55,6 +65,7 @@ export default async function ConferenceLayout({
 				}}
 				sidebar={{
 					enabled: true,
+					banner: <ConferenceSwitcher conferences={switcherOptions} currentSlug={conferenceSlug} />,
 				}}
 				themeSwitch={{
 					enabled: false,
