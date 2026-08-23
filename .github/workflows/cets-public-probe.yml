@@ -6,12 +6,14 @@ on:
       - temp/cets-research-bridge
     paths:
       - scripts/cets-public-probe.mjs
+      - scripts/cets-bnbscan-probe.mjs
       - .github/workflows/cets-public-probe.yml
   pull_request:
     branches:
       - main
     paths:
       - scripts/cets-public-probe.mjs
+      - scripts/cets-bnbscan-probe.mjs
       - .github/workflows/cets-public-probe.yml
   workflow_dispatch:
 
@@ -34,11 +36,14 @@ jobs:
       - name: Query fixed public blockchain endpoints
         run: node scripts/cets-public-probe.mjs
 
-      - name: Upload probe response
+      - name: Query fixed BNBScan transfer histories
+        run: node scripts/cets-bnbscan-probe.mjs
+
+      - name: Upload probe responses
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: cets-public-probe
-          path: research-output/cets-public-probe.json
+          path: research-output/*.json
           if-no-files-found: warn
           retention-days: 7
