@@ -9,11 +9,8 @@ const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a
 const START_BLOCK = 114061828;
 const END_BLOCK = 117316304;
 const BLOCK_SPAN = 10000;
-
-const rpcUrls = [
-  'https://rpc-bsc.blockmachine.io',
-  'https://bsc.drpc.org'
-];
+const PAGE_DELAY_MS = 1750;
+const RPC_URL = 'https://rpc-bsc.blockmachine.io';
 
 const clearCard = {
   balance: 1428968.605,
@@ -29,21 +26,18 @@ const targetCard = {
 };
 
 let requestId = 0;
-let endpointCursor = 0;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function rpc(method, params, attempts = 8) {
+async function rpc(method, params, attempts = 20) {
   let lastError;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
-    const endpointIndex = (endpointCursor + attempt) % rpcUrls.length;
-    const url = rpcUrls[endpointIndex];
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 30000);
+    const timer = setTimeout(() => controller.abort(), 45000);
     try {
-      const response = await fetch(url, {
+      const response = await fetch(RPC_URL, {
         method: 'POST',
         headers: {
           accept: 'application/json',
@@ -54,14 +48,29 @@ async function rpc(method, params, attempts = 8) {
         signal: controller.signal
       });
       const text = await response.text();
+      let payload;
+      try {
+        payload = JSON.parse(text);
+      } catch {
+        payload = null;
+      }
+
+      const rateLimited = response.status === 429 || payload?.error?.code === -32029;
+      if (rateLimited) {
+        const retryMs = Number(payload?.error?.data?.retry_after_ms ?? 5000);
+        console.warn(`${method}: rate limited; sleeping ${retryMs + 1000}ms`);
+        await sleep(retryMs + 1000);
+        continue;
+      }
       if (!response.ok) throw new Error(`HTTP ${response.status}: ${text.slice(0, 300)}`);
-      const payload = JSON.parse(text);
+      if (!payload) throw new Error(`Invalid JSON: ${text.slice(0, 300)}`);
       if (payload.error) throw new Error(JSON.stringify(payload.error));
-      endpointCursor = (endpointIndex + 1) % rpcUrls.length;
       return payload.result;
     } catch (error) {
       lastError = error;
-      await sleep(200 + attempt * 150);
+      const waitMs = Math.min(10000, 500 + attempt * 750);
+      console.warn(`${method}: ${error instanceof Error ? error.message : String(error)}; retrying in ${waitMs}ms`);
+      await sleep(waitMs);
     } finally {
       clearTimeout(timer);
     }
@@ -94,6 +103,7 @@ async function logsFor(address, topics, label) {
   const output = [];
   let cursor = START_BLOCK;
   let pages = 0;
+
   while (cursor <= END_BLOCK) {
     const end = Math.min(END_BLOCK, cursor + BLOCK_SPAN - 1);
     const page = await rpc('eth_getLogs', [{
@@ -105,10 +115,10 @@ async function logsFor(address, topics, label) {
     output.push(...page);
     pages += 1;
     if (pages % 25 === 0 || page.length) {
-      console.log(`${label}: ${cursor}-${end}, ${page.length} logs, total ${output.length}`);
+      console.log(`${label}: page ${pages}, blocks ${cursor}-${end}, ${page.length} logs, total ${output.length}`);
     }
     cursor = end + 1;
-    await sleep(150);
+    await sleep(PAGE_DELAY_MS);
   }
   return output;
 }
@@ -127,17 +137,15 @@ function parseLog(log, token) {
 
 async function blockTimestamp(block) {
   const value = await rpc('eth_getBlockByNumber', [`0x${block.toString(16)}`, false]);
+  await sleep(750);
   return Number(BigInt(value.timestamp));
 }
 
 async function attachTimestamps(events) {
   const blocks = [...new Set(events.map((event) => event.block))];
   const timestamps = new Map();
-  for (let index = 0; index < blocks.length; index += 4) {
-    const batch = blocks.slice(index, index + 4);
-    const values = await Promise.all(batch.map(async (block) => [block, await blockTimestamp(block)]));
-    for (const [block, timestamp] of values) timestamps.set(block, timestamp);
-    await sleep(250);
+  for (const block of blocks) {
+    timestamps.set(block, await blockTimestamp(block));
   }
   return events.map((event) => ({ ...event, timestamp: timestamps.get(event.block) }));
 }
@@ -167,9 +175,16 @@ function intervalsForBalance(events, wallet) {
   let balance = 0n;
   const changes = [];
   for (const event of events) {
-    if (event.from === wallet) balance -= event.value;
-    if (event.to === wallet) balance += event.value;
-    changes.push({ block: event.block, value: balance });
+    let changed = false;
+    if (event.from === wallet) {
+      balance -= event.value;
+      changed = true;
+    }
+    if (event.to === wallet) {
+      balance += event.value;
+      changed = true;
+    }
+    if (changed) changes.push({ block: event.block, value: balance });
   }
   return changes.map((change, index) => ({
     start: change.block,
@@ -205,89 +220,147 @@ function units(raw, decimals) {
   return Number(raw / base) + Number(raw % base) / Number(base);
 }
 
-function rounded(value, places) {
-  const factor = 10 ** places;
-  return Math.round((value + Number.EPSILON) * factor) / factor;
+function closeTo(value, expected, tolerance) {
+  return Math.abs(value - expected) <= tolerance;
+}
+
+function serializeIntervals(items, decimals) {
+  return items.map((item) => ({
+    start: item.start,
+    end: item.end,
+    raw: item.value.toString(),
+    value: units(item.value, decimals)
+  }));
 }
 
 await fs.mkdir('research-output', { recursive: true });
 
 const walletTopics = [addressTopic(CANDIDATE), addressTopic(REFERENCE)];
-const [cetsIn, cetsOut, xautPayouts] = await Promise.all([
-  logsFor(CETS, [TRANSFER_TOPIC, null, walletTopics], 'CETS incoming'),
-  logsFor(CETS, [TRANSFER_TOPIC, walletTopics], 'CETS outgoing'),
-  logsFor(XAUT, [TRANSFER_TOPIC, addressTopic(DISTRIBUTOR), walletTopics], 'XAUT payouts')
-]);
+console.log('Scanning CETS incoming transfers...');
+const cetsIn = await logsFor(CETS, [TRANSFER_TOPIC, null, walletTopics], 'CETS incoming');
+console.log('Scanning CETS outgoing transfers...');
+const cetsOut = await logsFor(CETS, [TRANSFER_TOPIC, walletTopics], 'CETS outgoing');
+console.log('Scanning XAUT dividend transfers...');
+const xautPayouts = await logsFor(
+  XAUT,
+  [TRANSFER_TOPIC, addressTopic(DISTRIBUTOR), walletTopics],
+  'XAUT payouts'
+);
 
 let cetsEvents = dedupe([...cetsIn, ...cetsOut]).map((log) => parseLog(log, CETS));
 let xautEvents = dedupe(xautPayouts).map((log) => parseLog(log, XAUT));
-[cetsEvents, xautEvents] = await Promise.all([attachTimestamps(cetsEvents), attachTimestamps(xautEvents)]);
+[cetsEvents, xautEvents] = await Promise.all([
+  attachTimestamps(cetsEvents),
+  attachTimestamps(xautEvents)
+]);
 
 const referenceBalanceIntervals = intervalsForBalance(cetsEvents, REFERENCE)
-  .filter((interval) => rounded(units(interval.value, 18), 3) === clearCard.balance);
+  .filter((interval) => closeTo(units(interval.value, 18), clearCard.balance, 0.0005));
 const referencePayoutIntervals = intervalsForPayout(xautEvents, REFERENCE)
-  .filter((interval) => rounded(units(interval.value, 6), 4) === clearCard.xaut);
+  .filter((interval) => closeTo(units(interval.value, 6), clearCard.xaut, 0.00005));
 
-const overlaps = [];
+const calibrationOverlaps = [];
 for (const balanceInterval of referenceBalanceIntervals) {
   for (const payoutInterval of referencePayoutIntervals) {
     const hit = overlap(balanceInterval, payoutInterval);
-    if (hit) overlaps.push({ ...hit, balanceInterval, payoutInterval });
+    if (hit) calibrationOverlaps.push({ ...hit, balanceInterval, payoutInterval });
   }
 }
 
-let snapshot;
-if (overlaps.length) {
-  const scored = [];
-  for (const hit of overlaps) {
-    const block = Math.floor((hit.start + hit.end) / 2);
-    const timestamp = await blockTimestamp(block);
-    const distance = Math.abs(timestamp - Date.parse('2026-08-21T12:00:00Z') / 1000);
-    scored.push({ ...hit, block, timestamp, distance });
-  }
-  scored.sort((a, b) => a.distance - b.distance);
-  snapshot = scored[0];
-} else {
-  const block = 117250000;
-  snapshot = { start: block, end: block, block, timestamp: await blockTimestamp(block), distance: null };
-}
-
-const candidateCetsRaw = apply(cetsEvents, CANDIDATE, snapshot.block);
-const referenceCetsRaw = apply(cetsEvents, REFERENCE, snapshot.block);
-const candidateXautRaw = xautEvents
-  .filter((event) => event.block <= snapshot.block && event.to === CANDIDATE)
-  .reduce((sum, event) => sum + event.value, 0n);
-const referenceXautRaw = xautEvents
-  .filter((event) => event.block <= snapshot.block && event.to === REFERENCE)
-  .reduce((sum, event) => sum + event.value, 0n);
-
-const candidateCets = units(candidateCetsRaw, 18);
-const referenceCets = units(referenceCetsRaw, 18);
-const candidateXaut = units(candidateXautRaw, 6);
-const referenceXaut = units(referenceXautRaw, 6);
 const expectedBalance = clearCard.balance * targetCard.weeklyUsd / clearCard.weeklyUsd;
 const expectedXaut = targetCard.payoutUsd * clearCard.xaut / clearCard.payoutUsd;
+const candidateBalanceIntervals = intervalsForBalance(cetsEvents, CANDIDATE);
+const candidatePayoutIntervals = intervalsForPayout(xautEvents, CANDIDATE);
+const candidateSegments = [];
+
+for (const calibration of calibrationOverlaps) {
+  for (const balanceInterval of candidateBalanceIntervals) {
+    const balanceHit = overlap(calibration, balanceInterval);
+    if (!balanceHit) continue;
+    for (const payoutInterval of candidatePayoutIntervals) {
+      const finalHit = overlap(balanceHit, payoutInterval);
+      if (!finalHit) continue;
+      const cets = units(balanceInterval.value, 18);
+      const xaut = units(payoutInterval.value, 6);
+      const cetsError = Math.abs(cets - expectedBalance) / expectedBalance;
+      const xautError = Math.abs(xaut - expectedXaut) / expectedXaut;
+      const midpoint = Math.floor((finalHit.start + finalHit.end) / 2);
+      const blockTieBreaker = Math.abs(midpoint - 117250000) / 1e12;
+      candidateSegments.push({
+        ...finalHit,
+        midpoint,
+        cetsRaw: balanceInterval.value,
+        xautRaw: payoutInterval.value,
+        cets,
+        xaut,
+        cetsError,
+        xautError,
+        score: cetsError + xautError + blockTieBreaker
+      });
+    }
+  }
+}
+
+candidateSegments.sort((a, b) => a.score - b.score);
+let selectedSegment = candidateSegments[0];
+if (!selectedSegment) {
+  const fallbackBlock = 117250000;
+  selectedSegment = {
+    start: fallbackBlock,
+    end: fallbackBlock,
+    midpoint: fallbackBlock,
+    cetsRaw: apply(cetsEvents, CANDIDATE, fallbackBlock),
+    xautRaw: xautEvents
+      .filter((event) => event.block <= fallbackBlock && event.to === CANDIDATE)
+      .reduce((sum, event) => sum + event.value, 0n),
+    score: null
+  };
+  selectedSegment.cets = units(selectedSegment.cetsRaw, 18);
+  selectedSegment.xaut = units(selectedSegment.xautRaw, 6);
+  selectedSegment.cetsError = Math.abs(selectedSegment.cets - expectedBalance) / expectedBalance;
+  selectedSegment.xautError = Math.abs(selectedSegment.xaut - expectedXaut) / expectedXaut;
+}
+
+const snapshotBlock = selectedSegment.midpoint;
+const snapshotTimestamp = await blockTimestamp(snapshotBlock);
+const candidateCets = selectedSegment.cets;
+const candidateXaut = selectedSegment.xaut;
+const referenceCets = units(apply(cetsEvents, REFERENCE, snapshotBlock), 18);
+const referenceXaut = units(
+  xautEvents
+    .filter((event) => event.block <= snapshotBlock && event.to === REFERENCE)
+    .reduce((sum, event) => sum + event.value, 0n),
+  6
+);
 const predictedWeekly = candidateCets * clearCard.weeklyUsd / clearCard.balance;
 const predictedPayoutUsd = candidateXaut * clearCard.payoutUsd / clearCard.xaut;
-
 const firstCandidate = firstPositive(cetsEvents, CANDIDATE);
 const firstReference = firstPositive(cetsEvents, REFERENCE);
 const candidateCode = await rpc('eth_getCode', [CANDIDATE, 'latest']);
 
 const report = {
   generatedAt: new Date().toISOString(),
-  providers: rpcUrls,
-  range: { startBlock: START_BLOCK, endBlock: END_BLOCK, blockSpan: BLOCK_SPAN },
-  eventCounts: { cets: cetsEvents.length, xautPayouts: xautEvents.length },
+  provider: RPC_URL,
+  range: {
+    startBlock: START_BLOCK,
+    endBlock: END_BLOCK,
+    blockSpan: BLOCK_SPAN,
+    pageDelayMs: PAGE_DELAY_MS
+  },
+  eventCounts: {
+    cets: cetsEvents.length,
+    xautPayouts: xautEvents.length
+  },
   calibration: {
-    matchingBalanceIntervals: referenceBalanceIntervals.map((item) => ({ ...item, value: item.value.toString() })),
-    matchingPayoutIntervals: referencePayoutIntervals.map((item) => ({ ...item, value: item.value.toString() })),
-    overlapCount: overlaps.length,
+    matchingBalanceIntervals: serializeIntervals(referenceBalanceIntervals, 18),
+    matchingPayoutIntervals: serializeIntervals(referencePayoutIntervals, 6),
+    overlapCount: calibrationOverlaps.length,
     selectedSnapshot: {
-      startBlock: snapshot.start,
-      endBlock: snapshot.end,
-      block: snapshot.block,
-      timestamp: new Date(snapshot.timestamp * 1000).toISOString()
+      startBlock: selectedSegment.start,
+      endBlock: selectedSegment.end,
+      block: snapshotBlock,
+      timestamp: new Date(snapshotTimestamp * 1000).toISOString(),
+      segmentScore: selectedSegment.score
     },
     referenceCets,
     referenceXaut
@@ -304,15 +377,17 @@ const report = {
     cets: candidateCets,
     expectedCets: expectedBalance,
     cetsDifference: candidateCets - expectedBalance,
-    cetsPercentError: Math.abs(candidateCets - expectedBalance) / expectedBalance * 100,
+    cetsPercentError: selectedSegment.cetsError * 100,
     predictedWeeklyUsd: predictedWeekly,
     cardWeeklyUsd: targetCard.weeklyUsd,
+    weeklyUsdDifference: predictedWeekly - targetCard.weeklyUsd,
     xautFromDistributor: candidateXaut,
     expectedXaut,
     xautDifference: candidateXaut - expectedXaut,
-    xautPercentError: Math.abs(candidateXaut - expectedXaut) / expectedXaut * 100,
+    xautPercentError: selectedSegment.xautError * 100,
     predictedPayoutUsd,
-    cardPayoutUsd: targetCard.payoutUsd
+    cardPayoutUsd: targetCard.payoutUsd,
+    payoutUsdDifference: predictedPayoutUsd - targetCard.payoutUsd
   },
   reference: {
     address: REFERENCE,
@@ -322,13 +397,36 @@ const report = {
       txHash: firstReference.txHash
     } : null
   },
+  topCandidateSegments: candidateSegments.slice(0, 20).map((segment) => ({
+    startBlock: segment.start,
+    endBlock: segment.end,
+    midpoint: segment.midpoint,
+    cets: segment.cets,
+    xaut: segment.xaut,
+    cetsPercentError: segment.cetsError * 100,
+    xautPercentError: segment.xautError * 100,
+    score: segment.score
+  })),
   rawEvents: {
-    candidateCets: cetsEvents.filter((event) => event.from === CANDIDATE || event.to === CANDIDATE).map((event) => ({ ...event, value: event.value.toString(), timestamp: new Date(event.timestamp * 1000).toISOString() })),
-    referenceCets: cetsEvents.filter((event) => event.from === REFERENCE || event.to === REFERENCE).map((event) => ({ ...event, value: event.value.toString(), timestamp: new Date(event.timestamp * 1000).toISOString() })),
-    candidateXaut: xautEvents.filter((event) => event.to === CANDIDATE).map((event) => ({ ...event, value: event.value.toString(), timestamp: new Date(event.timestamp * 1000).toISOString() })),
-    referenceXaut: xautEvents.filter((event) => event.to === REFERENCE).map((event) => ({ ...event, value: event.value.toString(), timestamp: new Date(event.timestamp * 1000).toISOString() }))
+    candidateCets: cetsEvents
+      .filter((event) => event.from === CANDIDATE || event.to === CANDIDATE)
+      .map((event) => ({ ...event, value: event.value.toString(), timestamp: new Date(event.timestamp * 1000).toISOString() })),
+    referenceCets: cetsEvents
+      .filter((event) => event.from === REFERENCE || event.to === REFERENCE)
+      .map((event) => ({ ...event, value: event.value.toString(), timestamp: new Date(event.timestamp * 1000).toISOString() })),
+    candidateXaut: xautEvents
+      .filter((event) => event.to === CANDIDATE)
+      .map((event) => ({ ...event, value: event.value.toString(), timestamp: new Date(event.timestamp * 1000).toISOString() })),
+    referenceXaut: xautEvents
+      .filter((event) => event.to === REFERENCE)
+      .map((event) => ({ ...event, value: event.value.toString(), timestamp: new Date(event.timestamp * 1000).toISOString() }))
   }
 };
 
 await fs.writeFile('research-output/cets-rpc-verification.json', JSON.stringify(report, null, 2));
-console.log(JSON.stringify({ calibration: report.calibration, candidate: report.candidate, reference: report.reference }, null, 2));
+console.log(JSON.stringify({
+  calibration: report.calibration,
+  candidate: report.candidate,
+  reference: report.reference,
+  topCandidateSegments: report.topCandidateSegments.slice(0, 5)
+}, null, 2));
