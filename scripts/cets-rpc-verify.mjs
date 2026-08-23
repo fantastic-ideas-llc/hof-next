@@ -6,15 +6,13 @@ const CANDIDATE = '0x93ef3f8d2c950ac30b9e018b52414dcf7d077e32';
 const REFERENCE = '0x04b14ddf5d7fb69542c04b7f57f5179ffd9d57bd';
 const DISTRIBUTOR = '0x25765fac1b94173bd60f0874a072dc4fa78fb3cf';
 const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
-const START_BLOCK = 114000000;
-const END_BLOCK = 117700000;
+const START_BLOCK = 114061828;
+const END_BLOCK = 117316304;
+const BLOCK_SPAN = 10000;
 
 const rpcUrls = [
-  'https://bsc-rpc.publicnode.com',
-  'https://bsc-dataseed.bnbchain.org',
-  'https://bsc-dataseed.binance.org',
-  'https://binance.llamarpc.com',
-  'https://1rpc.io/bnb'
+  'https://rpc-bsc.blockmachine.io',
+  'https://bsc.drpc.org'
 ];
 
 const clearCard = {
@@ -31,16 +29,17 @@ const targetCard = {
 };
 
 let requestId = 0;
-let rpcCursor = 0;
+let endpointCursor = 0;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function rpc(method, params, attempts = 12) {
+async function rpc(method, params, attempts = 8) {
   let lastError;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
-    const url = rpcUrls[(rpcCursor + attempt) % rpcUrls.length];
+    const endpointIndex = (endpointCursor + attempt) % rpcUrls.length;
+    const url = rpcUrls[endpointIndex];
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 30000);
     try {
@@ -58,13 +57,13 @@ async function rpc(method, params, attempts = 12) {
       if (!response.ok) throw new Error(`HTTP ${response.status}: ${text.slice(0, 300)}`);
       const payload = JSON.parse(text);
       if (payload.error) throw new Error(JSON.stringify(payload.error));
-      rpcCursor = (rpcCursor + attempt) % rpcUrls.length;
-      clearTimeout(timer);
+      endpointCursor = (endpointIndex + 1) % rpcUrls.length;
       return payload.result;
     } catch (error) {
-      clearTimeout(timer);
       lastError = error;
-      await sleep(Math.min(5000, 300 * 2 ** Math.min(attempt, 4)));
+      await sleep(200 + attempt * 150);
+    } finally {
+      clearTimeout(timer);
     }
   }
   throw new Error(`${method} failed: ${lastError instanceof Error ? lastError.message : String(lastError)}`);
@@ -94,32 +93,22 @@ function dedupe(logs) {
 async function logsFor(address, topics, label) {
   const output = [];
   let cursor = START_BLOCK;
-  let span = 100000;
-  let successes = 0;
-
+  let pages = 0;
   while (cursor <= END_BLOCK) {
-    const end = Math.min(END_BLOCK, cursor + span - 1);
-    try {
-      const page = await rpc('eth_getLogs', [{
-        address,
-        fromBlock: `0x${cursor.toString(16)}`,
-        toBlock: `0x${end.toString(16)}`,
-        topics
-      }]);
-      output.push(...page);
+    const end = Math.min(END_BLOCK, cursor + BLOCK_SPAN - 1);
+    const page = await rpc('eth_getLogs', [{
+      address,
+      fromBlock: `0x${cursor.toString(16)}`,
+      toBlock: `0x${end.toString(16)}`,
+      topics
+    }]);
+    output.push(...page);
+    pages += 1;
+    if (pages % 25 === 0 || page.length) {
       console.log(`${label}: ${cursor}-${end}, ${page.length} logs, total ${output.length}`);
-      cursor = end + 1;
-      successes += 1;
-      if (successes >= 3 && span < 200000) {
-        span = Math.min(200000, Math.floor(span * 1.5));
-        successes = 0;
-      }
-    } catch (error) {
-      if (span <= 2500) throw error;
-      span = Math.max(2500, Math.floor(span / 2));
-      successes = 0;
-      console.warn(`${label}: shrinking block span to ${span}`);
     }
+    cursor = end + 1;
+    await sleep(150);
   }
   return output;
 }
@@ -144,10 +133,11 @@ async function blockTimestamp(block) {
 async function attachTimestamps(events) {
   const blocks = [...new Set(events.map((event) => event.block))];
   const timestamps = new Map();
-  for (let index = 0; index < blocks.length; index += 12) {
-    const batch = blocks.slice(index, index + 12);
+  for (let index = 0; index < blocks.length; index += 4) {
+    const batch = blocks.slice(index, index + 4);
     const values = await Promise.all(batch.map(async (block) => [block, await blockTimestamp(block)]));
     for (const [block, timestamp] of values) timestamps.set(block, timestamp);
+    await sleep(250);
   }
   return events.map((event) => ({ ...event, timestamp: timestamps.get(event.block) }));
 }
@@ -223,15 +213,14 @@ function rounded(value, places) {
 await fs.mkdir('research-output', { recursive: true });
 
 const walletTopics = [addressTopic(CANDIDATE), addressTopic(REFERENCE)];
-const [cetsIn, cetsOut, xautIn, xautOut] = await Promise.all([
+const [cetsIn, cetsOut, xautPayouts] = await Promise.all([
   logsFor(CETS, [TRANSFER_TOPIC, null, walletTopics], 'CETS incoming'),
   logsFor(CETS, [TRANSFER_TOPIC, walletTopics], 'CETS outgoing'),
-  logsFor(XAUT, [TRANSFER_TOPIC, null, walletTopics], 'XAUT incoming'),
-  logsFor(XAUT, [TRANSFER_TOPIC, walletTopics], 'XAUT outgoing')
+  logsFor(XAUT, [TRANSFER_TOPIC, addressTopic(DISTRIBUTOR), walletTopics], 'XAUT payouts')
 ]);
 
 let cetsEvents = dedupe([...cetsIn, ...cetsOut]).map((log) => parseLog(log, CETS));
-let xautEvents = dedupe([...xautIn, ...xautOut]).map((log) => parseLog(log, XAUT));
+let xautEvents = dedupe(xautPayouts).map((log) => parseLog(log, XAUT));
 [cetsEvents, xautEvents] = await Promise.all([attachTimestamps(cetsEvents), attachTimestamps(xautEvents)]);
 
 const referenceBalanceIntervals = intervalsForBalance(cetsEvents, REFERENCE)
@@ -266,10 +255,10 @@ if (overlaps.length) {
 const candidateCetsRaw = apply(cetsEvents, CANDIDATE, snapshot.block);
 const referenceCetsRaw = apply(cetsEvents, REFERENCE, snapshot.block);
 const candidateXautRaw = xautEvents
-  .filter((event) => event.block <= snapshot.block && event.from === DISTRIBUTOR && event.to === CANDIDATE)
+  .filter((event) => event.block <= snapshot.block && event.to === CANDIDATE)
   .reduce((sum, event) => sum + event.value, 0n);
 const referenceXautRaw = xautEvents
-  .filter((event) => event.block <= snapshot.block && event.from === DISTRIBUTOR && event.to === REFERENCE)
+  .filter((event) => event.block <= snapshot.block && event.to === REFERENCE)
   .reduce((sum, event) => sum + event.value, 0n);
 
 const candidateCets = units(candidateCetsRaw, 18);
@@ -287,8 +276,9 @@ const candidateCode = await rpc('eth_getCode', [CANDIDATE, 'latest']);
 
 const report = {
   generatedAt: new Date().toISOString(),
-  range: { startBlock: START_BLOCK, endBlock: END_BLOCK },
-  eventCounts: { cets: cetsEvents.length, xaut: xautEvents.length },
+  providers: rpcUrls,
+  range: { startBlock: START_BLOCK, endBlock: END_BLOCK, blockSpan: BLOCK_SPAN },
+  eventCounts: { cets: cetsEvents.length, xautPayouts: xautEvents.length },
   calibration: {
     matchingBalanceIntervals: referenceBalanceIntervals.map((item) => ({ ...item, value: item.value.toString() })),
     matchingPayoutIntervals: referencePayoutIntervals.map((item) => ({ ...item, value: item.value.toString() })),
@@ -335,8 +325,8 @@ const report = {
   rawEvents: {
     candidateCets: cetsEvents.filter((event) => event.from === CANDIDATE || event.to === CANDIDATE).map((event) => ({ ...event, value: event.value.toString(), timestamp: new Date(event.timestamp * 1000).toISOString() })),
     referenceCets: cetsEvents.filter((event) => event.from === REFERENCE || event.to === REFERENCE).map((event) => ({ ...event, value: event.value.toString(), timestamp: new Date(event.timestamp * 1000).toISOString() })),
-    candidateXaut: xautEvents.filter((event) => event.from === CANDIDATE || event.to === CANDIDATE).map((event) => ({ ...event, value: event.value.toString(), timestamp: new Date(event.timestamp * 1000).toISOString() })),
-    referenceXaut: xautEvents.filter((event) => event.from === REFERENCE || event.to === REFERENCE).map((event) => ({ ...event, value: event.value.toString(), timestamp: new Date(event.timestamp * 1000).toISOString() }))
+    candidateXaut: xautEvents.filter((event) => event.to === CANDIDATE).map((event) => ({ ...event, value: event.value.toString(), timestamp: new Date(event.timestamp * 1000).toISOString() })),
+    referenceXaut: xautEvents.filter((event) => event.to === REFERENCE).map((event) => ({ ...event, value: event.value.toString(), timestamp: new Date(event.timestamp * 1000).toISOString() }))
   }
 };
 
