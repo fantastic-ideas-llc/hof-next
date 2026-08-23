@@ -1,0 +1,44 @@
+name: CETS public-chain probe
+
+on:
+  push:
+    branches:
+      - temp/cets-research-bridge
+    paths:
+      - scripts/cets-public-probe.mjs
+      - .github/workflows/cets-public-probe.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - scripts/cets-public-probe.mjs
+      - .github/workflows/cets-public-probe.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out probe branch
+        uses: actions/checkout@v4
+
+      - name: Use Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Query fixed public blockchain endpoints
+        run: node scripts/cets-public-probe.mjs
+
+      - name: Upload probe response
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cets-public-probe
+          path: research-output/cets-public-probe.json
+          if-no-files-found: warn
+          retention-days: 7
