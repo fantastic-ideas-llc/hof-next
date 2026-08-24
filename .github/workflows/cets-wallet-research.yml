@@ -16,168 +16,161 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Confirm candidate with holder and historical transfer data
+      - name: Verify candidate against historical on-chain balances
         shell: bash
         run: |
-          cat > /tmp/cets_research.py <<'PY'
+          cat > /tmp/cets_history.py <<'PY'
           import json
           import time
-          import urllib.error
-          import urllib.parse
           import urllib.request
           from datetime import datetime, timezone
-          from decimal import Decimal
+          from decimal import Decimal, getcontext
 
-          TOKEN = '0xB0c2aB5af4028461acE3f6e1C33a4eE1404E7777'
-          XAUT = '0x21cAef8A43163Eea865baeE23b9C2E327696A3bf'
-          CANDIDATE = '0x93EF3f8D2C950Ac30B9e018B52414DCf7D077E32'
-          TARGET = Decimal('15547486.615516104')
-          CLEAN_BALANCE = Decimal('1428968.605')
-          CLEAN_WEEKLY = Decimal('283.76')
-          TARGET_WEEKLY = Decimal('3087.37')
-          CARD_CUTOFF = datetime(2026, 8, 22, 0, 0, 0, tzinfo=timezone.utc)
+          getcontext().prec = 50
 
-          def request_json(url, *, method='GET', payload=None):
-              body = None
-              headers = {
-                  'Accept': 'application/json',
-                  'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/151.0 CETSResearch/1.0',
-              }
-              if payload is not None:
-                  body = json.dumps(payload).encode('utf-8')
-                  headers['Content-Type'] = 'application/json'
-              req = urllib.request.Request(url, data=body, headers=headers, method=method)
-              with urllib.request.urlopen(req, timeout=60) as r:
-                  text = r.read().decode('utf-8')
-                  print(f'FETCH {method} {url} -> {r.status}, {len(text)} bytes')
-                  return json.loads(text)
+          TOKEN = '0xb0c2ab5af4028461ace3f6e1c33a4ee1404e7777'
+          CANDIDATE = '0x93ef3f8d2c950ac30b9e018b52414dcf7d077e32'
+          REFERENCE = '0x04b14ddf5d7fb69542c04b7f57f5179ffd9d57bd'
+          TARGET = Decimal('15547486.61551610515928954046')
+          CARD_REFERENCE_BALANCE = Decimal('1428968.605')
+          CARD_REFERENCE_WEEKLY = Decimal('283.76')
+          CARD_TARGET_WEEKLY = Decimal('3087.37')
 
-          print('===== SCREENSHOT-DERIVED TARGET =====')
-          print('inferred_target_cets =', TARGET)
-          print('ratio_check =', CLEAN_BALANCE * TARGET_WEEKLY / CLEAN_WEEKLY)
-          print('candidate =', CANDIDATE)
+          RPCS = [
+              'https://bsc-rpc.publicnode.com',
+              'https://bsc-dataseed.binance.org',
+              'https://1rpc.io/bnb',
+              'https://binance.llamarpc.com',
+          ]
+          active_rpc = None
+          rpc_id = 0
 
-          print('\n===== CURRENT HOLDER CONFIRMATION =====')
-          for name, url in {
-              'honeypot': f'https://api.honeypot.is/v1/TopHolders?address={TOKEN}&chainID=56',
-              'goplus': 'https://api.gopluslabs.io/api/v1/token_security/56?' + urllib.parse.urlencode({'contract_addresses': TOKEN.lower()}),
-          }.items():
-              try:
-                  data = request_json(url)
-                  if name == 'honeypot':
-                      rows = data.get('holders', [])
-                      match = next((x for x in rows if x.get('address','').lower() == CANDIDATE.lower()), None)
-                      if match:
-                          bal = Decimal(match['balance']) / Decimal(10**18)
-                          print(name, 'candidate_balance_cets =', bal, 'difference =', bal - TARGET, 'ends_in_2 =', CANDIDATE.lower().endswith('2'))
-                  else:
-                      token_data = data.get('result', {}).get(TOKEN.lower(), {})
-                      match = next((x for x in token_data.get('holders', []) if x.get('address','').lower() == CANDIDATE.lower()), None)
-                      if match:
-                          bal = Decimal(match['balance'])
-                          print(name, 'candidate_balance_cets =', bal, 'difference =', bal - TARGET, 'percent =', match.get('percent'))
-              except Exception as exc:
-                  print('ERROR current holder', name, type(exc).__name__, exc)
-
-          def bnbscan_transfers(token_address):
-              all_rows = []
-              for offset in range(0, 5000, 100):
-                  payload = {
-                      'entity': 'token_transfers',
-                      'filter': {
-                          'address': CANDIDATE,
-                          'tokenAddress': token_address,
-                      },
-                      'orderBy': 'asc',
-                      'limit': 100,
-                      'offset': offset,
-                  }
-                  try:
-                      data = request_json('https://bnbscan.com/api/v1/query', method='POST', payload=payload)
-                  except urllib.error.HTTPError as exc:
-                      text = exc.read().decode('utf-8', errors='replace')
-                      print('BNBSCAN HTTP ERROR', exc.code, text[:1000])
-                      break
-                  rows = data.get('data', []) if isinstance(data, dict) else []
-                  print('bnbscan page offset', offset, 'rows', len(rows), 'response keys', list(data.keys()) if isinstance(data, dict) else type(data))
-                  all_rows.extend(rows)
-                  if len(rows) < 100:
-                      break
-                  time.sleep(0.7)
-              return all_rows
-
-          def parse_ts(value):
-              if isinstance(value, str):
-                  return datetime.fromisoformat(value.replace('Z', '+00:00'))
-              return None
-
-          def summarize(rows, decimals, label):
-              rows = sorted(rows, key=lambda r: (r.get('blockNumber', 0), r.get('logIndex', 0)))
-              net = Decimal(0)
-              incoming_total = Decimal(0)
-              outgoing_total = Decimal(0)
-              first_in = None
-              print(f'\n===== {label} TRANSFERS FOR CANDIDATE ({len(rows)}) =====')
-              for row in rows:
-                  amount = Decimal(str(row.get('value', '0'))) / (Decimal(10) ** decimals)
-                  frm = str(row.get('fromAddress') or row.get('from') or '').lower()
-                  to = str(row.get('toAddress') or row.get('to') or '').lower()
-                  ts = parse_ts(row.get('timestamp'))
-                  direction = 'OTHER'
-                  if to == CANDIDATE.lower():
-                      net += amount
-                      incoming_total += amount
-                      direction = 'IN'
-                      if first_in is None:
-                          first_in = ts
-                  if frm == CANDIDATE.lower():
-                      net -= amount
-                      outgoing_total += amount
-                      direction = 'OUT' if direction == 'OTHER' else 'SELF'
-                  print(json.dumps({
-                      'timestamp': ts.isoformat() if ts else row.get('timestamp'),
-                      'blockNumber': row.get('blockNumber'),
-                      'txHash': row.get('txHash'),
-                      'from': frm,
-                      'to': to,
-                      'direction': direction,
-                      'amount': str(amount),
-                      'running_net': str(net),
-                  }, sort_keys=True))
-              print(label, 'first_incoming =', first_in.isoformat() if first_in else None)
-              print(label, 'incoming_total =', incoming_total)
-              print(label, 'outgoing_total =', outgoing_total)
-              print(label, 'net_from_indexed_transfers =', net)
-              return first_in, incoming_total, outgoing_total, net
-
-          cets_rows = bnbscan_transfers(TOKEN)
-          cets_summary = summarize(cets_rows, 18, 'CETS')
-
-          xaut_rows = bnbscan_transfers(XAUT)
-          xaut_summary = summarize(xaut_rows, 6, 'XAUT')
-
-          # Totals through the card date, independent of whether later transfers exist.
-          for rows, decimals, label in ((cets_rows, 18, 'CETS'), (xaut_rows, 6, 'XAUT')):
-              incoming = Decimal(0)
-              outgoing = Decimal(0)
-              first_in = None
-              for row in rows:
-                  ts = parse_ts(row.get('timestamp'))
-                  if ts is None or ts >= CARD_CUTOFF:
+          def rpc(method, params):
+              global active_rpc, rpc_id
+              rpc_id += 1
+              payload = json.dumps({'jsonrpc':'2.0','id':rpc_id,'method':method,'params':params}).encode()
+              endpoints = [active_rpc] if active_rpc else []
+              endpoints += [x for x in RPCS if x != active_rpc]
+              last = None
+              for endpoint in endpoints:
+                  if not endpoint:
                       continue
-                  amount = Decimal(str(row.get('value', '0'))) / (Decimal(10) ** decimals)
-                  frm = str(row.get('fromAddress') or '').lower()
-                  to = str(row.get('toAddress') or '').lower()
-                  if to == CANDIDATE.lower():
-                      incoming += amount
-                      if first_in is None or ts < first_in:
-                          first_in = ts
-                  if frm == CANDIDATE.lower():
-                      outgoing += amount
-              print(f'\n===== {label} THROUGH CARD CUTOFF {CARD_CUTOFF.isoformat()} =====')
-              print('first_incoming_before_cutoff =', first_in.isoformat() if first_in else None)
-              print('incoming_before_cutoff =', incoming)
-              print('outgoing_before_cutoff =', outgoing)
-              print('net_before_cutoff =', incoming - outgoing)
+                  try:
+                      req = urllib.request.Request(endpoint, data=payload, headers={
+                          'Content-Type':'application/json',
+                          'Accept':'application/json',
+                          'User-Agent':'CETSResearch/1.0',
+                      })
+                      with urllib.request.urlopen(req, timeout=30) as r:
+                          data = json.loads(r.read().decode())
+                      if 'error' in data:
+                          raise RuntimeError(data['error'])
+                      active_rpc = endpoint
+                      return data['result']
+                  except Exception as exc:
+                      last = exc
+                      active_rpc = None
+              raise RuntimeError(f'all RPCs failed for {method}: {last}')
+
+          def block(number):
+              raw = rpc('eth_getBlockByNumber', [hex(number), False])
+              return {'number': int(raw['number'],16), 'timestamp': int(raw['timestamp'],16)}
+
+          latest = int(rpc('eth_blockNumber', []), 16)
+          latest_block = block(latest)
+          print('active_rpc =', active_rpc)
+          print('latest_block =', latest_block, datetime.fromtimestamp(latest_block['timestamp'], timezone.utc).isoformat())
+
+          def find_block_at_or_before(ts):
+              lo, hi = 1, latest
+              while lo <= hi:
+                  mid = (lo + hi) // 2
+                  b = block(mid)
+                  if b['timestamp'] <= ts:
+                      lo = mid + 1
+                  else:
+                      hi = mid - 1
+              return block(max(1, hi))
+
+          def balance_of(token, holder, block_number):
+              data = '0x70a08231' + holder[2:].lower().rjust(64, '0')
+              raw = rpc('eth_call', [{'to': token, 'data': data}, hex(block_number)])
+              return Decimal(int(raw, 16)) / Decimal(10**18)
+
+          times = [
+              '2026-08-20T00:00:00+00:00',
+              '2026-08-21T00:00:00+00:00',
+              '2026-08-21T06:00:00+00:00',
+              '2026-08-21T12:00:00+00:00',
+              '2026-08-21T18:00:00+00:00',
+              '2026-08-21T22:00:00+00:00',
+              '2026-08-21T23:00:00+00:00',
+              '2026-08-22T00:00:00+00:00',
+              '2026-08-23T00:00:00+00:00',
+              '2026-08-24T00:00:00+00:00',
+          ]
+
+          print('\n===== HISTORICAL BALANCE CHECKS =====')
+          results = []
+          for iso in times:
+              dt = datetime.fromisoformat(iso)
+              b = find_block_at_or_before(int(dt.timestamp()))
+              try:
+                  candidate = balance_of(TOKEN, CANDIDATE, b['number'])
+                  reference = balance_of(TOKEN, REFERENCE, b['number'])
+                  ratio = candidate / reference if reference else None
+                  implied_weekly = CARD_REFERENCE_WEEKLY * ratio if ratio else None
+                  inferred_from_card = reference * CARD_TARGET_WEEKLY / CARD_REFERENCE_WEEKLY
+                  row = {
+                      'requested_time': iso,
+                      'block': b['number'],
+                      'block_time': datetime.fromtimestamp(b['timestamp'], timezone.utc).isoformat(),
+                      'candidate_cets': str(candidate),
+                      'reference_cets': str(reference),
+                      'candidate_minus_screenshot_target': str(candidate - TARGET),
+                      'candidate_reference_ratio': str(ratio) if ratio else None,
+                      'weekly_implied_from_ratio': str(implied_weekly) if implied_weekly else None,
+                      'candidate_minus_balance_inferred_using_historical_reference': str(candidate - inferred_from_card),
+                  }
+                  print(json.dumps(row, sort_keys=True))
+                  results.append((dt, b, candidate, reference))
+              except Exception as exc:
+                  print(json.dumps({'requested_time':iso,'block':b['number'],'error':str(exc)}))
+
+          print('\n===== CURRENT BALANCES =====')
+          for who, addr in [('candidate', CANDIDATE), ('reference', REFERENCE)]:
+              try:
+                  print(who, balance_of(TOKEN, addr, latest))
+              except Exception as exc:
+                  print(who, 'ERROR', exc)
+
+          # Search the Aug 21 day at 30-minute intervals for the closest agreement
+          # with both the clean-card reference balance and inferred target balance.
+          print('\n===== CLOSEST 30-MINUTE SNAPSHOTS ON AUG 21 =====')
+          start = int(datetime(2026,8,21,0,0,tzinfo=timezone.utc).timestamp())
+          best = []
+          for minute in range(0, 24*60, 30):
+              ts = start + minute*60
+              b = find_block_at_or_before(ts)
+              try:
+                  candidate = balance_of(TOKEN, CANDIDATE, b['number'])
+                  reference = balance_of(TOKEN, REFERENCE, b['number'])
+              except Exception as exc:
+                  print('snapshot error', minute, exc)
+                  continue
+              # Score in CETS: exact reference-card mismatch plus candidate target mismatch.
+              score = abs(reference - CARD_REFERENCE_BALANCE) + abs(candidate - TARGET)
+              best.append((score, ts, b['number'], candidate, reference))
+          for score, ts, bn, candidate, reference in sorted(best)[:10]:
+              print(json.dumps({
+                  'time': datetime.fromtimestamp(ts, timezone.utc).isoformat(),
+                  'block': bn,
+                  'candidate_cets': str(candidate),
+                  'reference_cets': str(reference),
+                  'candidate_target_difference': str(candidate - TARGET),
+                  'reference_card_difference': str(reference - CARD_REFERENCE_BALANCE),
+                  'combined_score': str(score),
+                  'weekly_from_ratio': str(CARD_REFERENCE_WEEKLY * candidate / reference) if reference else None,
+              }, sort_keys=True))
           PY
-          python /tmp/cets_research.py
+          python /tmp/cets_history.py
