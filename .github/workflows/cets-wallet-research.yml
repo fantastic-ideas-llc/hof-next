@@ -1,0 +1,176 @@
+name: CETS wallet research
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/cets-wallet-research.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  investigate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify candidate against historical on-chain balances
+        shell: bash
+        run: |
+          cat > /tmp/cets_history.py <<'PY'
+          import json
+          import time
+          import urllib.request
+          from datetime import datetime, timezone
+          from decimal import Decimal, getcontext
+
+          getcontext().prec = 50
+
+          TOKEN = '0xb0c2ab5af4028461ace3f6e1c33a4ee1404e7777'
+          CANDIDATE = '0x93ef3f8d2c950ac30b9e018b52414dcf7d077e32'
+          REFERENCE = '0x04b14ddf5d7fb69542c04b7f57f5179ffd9d57bd'
+          TARGET = Decimal('15547486.61551610515928954046')
+          CARD_REFERENCE_BALANCE = Decimal('1428968.605')
+          CARD_REFERENCE_WEEKLY = Decimal('283.76')
+          CARD_TARGET_WEEKLY = Decimal('3087.37')
+
+          RPCS = [
+              'https://bsc-rpc.publicnode.com',
+              'https://bsc-dataseed.binance.org',
+              'https://1rpc.io/bnb',
+              'https://binance.llamarpc.com',
+          ]
+          active_rpc = None
+          rpc_id = 0
+
+          def rpc(method, params):
+              global active_rpc, rpc_id
+              rpc_id += 1
+              payload = json.dumps({'jsonrpc':'2.0','id':rpc_id,'method':method,'params':params}).encode()
+              endpoints = [active_rpc] if active_rpc else []
+              endpoints += [x for x in RPCS if x != active_rpc]
+              last = None
+              for endpoint in endpoints:
+                  if not endpoint:
+                      continue
+                  try:
+                      req = urllib.request.Request(endpoint, data=payload, headers={
+                          'Content-Type':'application/json',
+                          'Accept':'application/json',
+                          'User-Agent':'CETSResearch/1.0',
+                      })
+                      with urllib.request.urlopen(req, timeout=30) as r:
+                          data = json.loads(r.read().decode())
+                      if 'error' in data:
+                          raise RuntimeError(data['error'])
+                      active_rpc = endpoint
+                      return data['result']
+                  except Exception as exc:
+                      last = exc
+                      active_rpc = None
+              raise RuntimeError(f'all RPCs failed for {method}: {last}')
+
+          def block(number):
+              raw = rpc('eth_getBlockByNumber', [hex(number), False])
+              return {'number': int(raw['number'],16), 'timestamp': int(raw['timestamp'],16)}
+
+          latest = int(rpc('eth_blockNumber', []), 16)
+          latest_block = block(latest)
+          print('active_rpc =', active_rpc)
+          print('latest_block =', latest_block, datetime.fromtimestamp(latest_block['timestamp'], timezone.utc).isoformat())
+
+          def find_block_at_or_before(ts):
+              lo, hi = 1, latest
+              while lo <= hi:
+                  mid = (lo + hi) // 2
+                  b = block(mid)
+                  if b['timestamp'] <= ts:
+                      lo = mid + 1
+                  else:
+                      hi = mid - 1
+              return block(max(1, hi))
+
+          def balance_of(token, holder, block_number):
+              data = '0x70a08231' + holder[2:].lower().rjust(64, '0')
+              raw = rpc('eth_call', [{'to': token, 'data': data}, hex(block_number)])
+              return Decimal(int(raw, 16)) / Decimal(10**18)
+
+          times = [
+              '2026-08-20T00:00:00+00:00',
+              '2026-08-21T00:00:00+00:00',
+              '2026-08-21T06:00:00+00:00',
+              '2026-08-21T12:00:00+00:00',
+              '2026-08-21T18:00:00+00:00',
+              '2026-08-21T22:00:00+00:00',
+              '2026-08-21T23:00:00+00:00',
+              '2026-08-22T00:00:00+00:00',
+              '2026-08-23T00:00:00+00:00',
+              '2026-08-24T00:00:00+00:00',
+          ]
+
+          print('\n===== HISTORICAL BALANCE CHECKS =====')
+          results = []
+          for iso in times:
+              dt = datetime.fromisoformat(iso)
+              b = find_block_at_or_before(int(dt.timestamp()))
+              try:
+                  candidate = balance_of(TOKEN, CANDIDATE, b['number'])
+                  reference = balance_of(TOKEN, REFERENCE, b['number'])
+                  ratio = candidate / reference if reference else None
+                  implied_weekly = CARD_REFERENCE_WEEKLY * ratio if ratio else None
+                  inferred_from_card = reference * CARD_TARGET_WEEKLY / CARD_REFERENCE_WEEKLY
+                  row = {
+                      'requested_time': iso,
+                      'block': b['number'],
+                      'block_time': datetime.fromtimestamp(b['timestamp'], timezone.utc).isoformat(),
+                      'candidate_cets': str(candidate),
+                      'reference_cets': str(reference),
+                      'candidate_minus_screenshot_target': str(candidate - TARGET),
+                      'candidate_reference_ratio': str(ratio) if ratio else None,
+                      'weekly_implied_from_ratio': str(implied_weekly) if implied_weekly else None,
+                      'candidate_minus_balance_inferred_using_historical_reference': str(candidate - inferred_from_card),
+                  }
+                  print(json.dumps(row, sort_keys=True))
+                  results.append((dt, b, candidate, reference))
+              except Exception as exc:
+                  print(json.dumps({'requested_time':iso,'block':b['number'],'error':str(exc)}))
+
+          print('\n===== CURRENT BALANCES =====')
+          for who, addr in [('candidate', CANDIDATE), ('reference', REFERENCE)]:
+              try:
+                  print(who, balance_of(TOKEN, addr, latest))
+              except Exception as exc:
+                  print(who, 'ERROR', exc)
+
+          # Search the Aug 21 day at 30-minute intervals for the closest agreement
+          # with both the clean-card reference balance and inferred target balance.
+          print('\n===== CLOSEST 30-MINUTE SNAPSHOTS ON AUG 21 =====')
+          start = int(datetime(2026,8,21,0,0,tzinfo=timezone.utc).timestamp())
+          best = []
+          for minute in range(0, 24*60, 30):
+              ts = start + minute*60
+              b = find_block_at_or_before(ts)
+              try:
+                  candidate = balance_of(TOKEN, CANDIDATE, b['number'])
+                  reference = balance_of(TOKEN, REFERENCE, b['number'])
+              except Exception as exc:
+                  print('snapshot error', minute, exc)
+                  continue
+              # Score in CETS: exact reference-card mismatch plus candidate target mismatch.
+              score = abs(reference - CARD_REFERENCE_BALANCE) + abs(candidate - TARGET)
+              best.append((score, ts, b['number'], candidate, reference))
+          for score, ts, bn, candidate, reference in sorted(best)[:10]:
+              print(json.dumps({
+                  'time': datetime.fromtimestamp(ts, timezone.utc).isoformat(),
+                  'block': bn,
+                  'candidate_cets': str(candidate),
+                  'reference_cets': str(reference),
+                  'candidate_target_difference': str(candidate - TARGET),
+                  'reference_card_difference': str(reference - CARD_REFERENCE_BALANCE),
+                  'combined_score': str(score),
+                  'weekly_from_ratio': str(CARD_REFERENCE_WEEKLY * candidate / reference) if reference else None,
+              }, sort_keys=True))
+          PY
+          python /tmp/cets_history.py
