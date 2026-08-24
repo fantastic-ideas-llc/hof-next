@@ -16,106 +16,168 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fetch holder datasets and rank candidates
+      - name: Confirm candidate with holder and historical transfer data
         shell: bash
         run: |
           cat > /tmp/cets_research.py <<'PY'
           import json
+          import time
+          import urllib.error
           import urllib.parse
           import urllib.request
+          from datetime import datetime, timezone
           from decimal import Decimal
 
           TOKEN = '0xB0c2aB5af4028461acE3f6e1C33a4eE1404E7777'
+          XAUT = '0x21cAef8A43163Eea865baeE23b9C2E327696A3bf'
+          CANDIDATE = '0x93EF3f8D2C950Ac30B9e018B52414DCf7D077E32'
           TARGET = Decimal('15547486.615516104')
+          CLEAN_BALANCE = Decimal('1428968.605')
+          CLEAN_WEEKLY = Decimal('283.76')
+          TARGET_WEEKLY = Decimal('3087.37')
+          CARD_CUTOFF = datetime(2026, 8, 22, 0, 0, 0, tzinfo=timezone.utc)
 
-          def get_json(url):
-              req = urllib.request.Request(url, headers={
+          def request_json(url, *, method='GET', payload=None):
+              body = None
+              headers = {
                   'Accept': 'application/json',
-                  'User-Agent': 'Mozilla/5.0 CETSResearch/1.0',
-              })
+                  'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/151.0 CETSResearch/1.0',
+              }
+              if payload is not None:
+                  body = json.dumps(payload).encode('utf-8')
+                  headers['Content-Type'] = 'application/json'
+              req = urllib.request.Request(url, data=body, headers=headers, method=method)
               with urllib.request.urlopen(req, timeout=60) as r:
-                  body = r.read().decode('utf-8')
-                  print(f'FETCH {url} -> {r.status}, {len(body)} bytes')
-                  return json.loads(body)
+                  text = r.read().decode('utf-8')
+                  print(f'FETCH {method} {url} -> {r.status}, {len(text)} bytes')
+                  return json.loads(text)
 
-          datasets = {}
-          urls = {
-              'routescan': f'https://api.routescan.io/v2/network/mainnet/evm/56/erc20/{TOKEN}/holders?limit=100&count=true',
+          print('===== SCREENSHOT-DERIVED TARGET =====')
+          print('inferred_target_cets =', TARGET)
+          print('ratio_check =', CLEAN_BALANCE * TARGET_WEEKLY / CLEAN_WEEKLY)
+          print('candidate =', CANDIDATE)
+
+          print('\n===== CURRENT HOLDER CONFIRMATION =====')
+          for name, url in {
               'honeypot': f'https://api.honeypot.is/v1/TopHolders?address={TOKEN}&chainID=56',
               'goplus': 'https://api.gopluslabs.io/api/v1/token_security/56?' + urllib.parse.urlencode({'contract_addresses': TOKEN.lower()}),
-          }
-
-          for name, url in urls.items():
+          }.items():
               try:
-                  datasets[name] = get_json(url)
+                  data = request_json(url)
+                  if name == 'honeypot':
+                      rows = data.get('holders', [])
+                      match = next((x for x in rows if x.get('address','').lower() == CANDIDATE.lower()), None)
+                      if match:
+                          bal = Decimal(match['balance']) / Decimal(10**18)
+                          print(name, 'candidate_balance_cets =', bal, 'difference =', bal - TARGET, 'ends_in_2 =', CANDIDATE.lower().endswith('2'))
+                  else:
+                      token_data = data.get('result', {}).get(TOKEN.lower(), {})
+                      match = next((x for x in token_data.get('holders', []) if x.get('address','').lower() == CANDIDATE.lower()), None)
+                      if match:
+                          bal = Decimal(match['balance'])
+                          print(name, 'candidate_balance_cets =', bal, 'difference =', bal - TARGET, 'percent =', match.get('percent'))
               except Exception as exc:
-                  print(f'ERROR {name}: {type(exc).__name__}: {exc}')
-                  datasets[name] = {'error': str(exc)}
+                  print('ERROR current holder', name, type(exc).__name__, exc)
 
-          print('\n===== RAW DATASETS =====')
-          for name, data in datasets.items():
-              print(f'--- {name} ---')
-              print(json.dumps(data, indent=2)[:50000])
+          def bnbscan_transfers(token_address):
+              all_rows = []
+              for offset in range(0, 5000, 100):
+                  payload = {
+                      'entity': 'token_transfers',
+                      'filter': {
+                          'address': CANDIDATE,
+                          'tokenAddress': token_address,
+                      },
+                      'orderBy': 'asc',
+                      'limit': 100,
+                      'offset': offset,
+                  }
+                  try:
+                      data = request_json('https://bnbscan.com/api/v1/query', method='POST', payload=payload)
+                  except urllib.error.HTTPError as exc:
+                      text = exc.read().decode('utf-8', errors='replace')
+                      print('BNBSCAN HTTP ERROR', exc.code, text[:1000])
+                      break
+                  rows = data.get('data', []) if isinstance(data, dict) else []
+                  print('bnbscan page offset', offset, 'rows', len(rows), 'response keys', list(data.keys()) if isinstance(data, dict) else type(data))
+                  all_rows.extend(rows)
+                  if len(rows) < 100:
+                      break
+                  time.sleep(0.7)
+              return all_rows
 
-          rows = []
+          def parse_ts(value):
+              if isinstance(value, str):
+                  return datetime.fromisoformat(value.replace('Z', '+00:00'))
+              return None
 
-          for item in datasets.get('routescan', {}).get('items', []) or []:
-              try:
-                  bal = Decimal(str(item.get('balance', '0'))) / (Decimal(10) ** 18)
-              except Exception:
-                  continue
-              rows.append({'source':'routescan','address':str(item.get('address','')).lower(),'balance_cets':bal,'percentage':item.get('percentage')})
+          def summarize(rows, decimals, label):
+              rows = sorted(rows, key=lambda r: (r.get('blockNumber', 0), r.get('logIndex', 0)))
+              net = Decimal(0)
+              incoming_total = Decimal(0)
+              outgoing_total = Decimal(0)
+              first_in = None
+              print(f'\n===== {label} TRANSFERS FOR CANDIDATE ({len(rows)}) =====')
+              for row in rows:
+                  amount = Decimal(str(row.get('value', '0'))) / (Decimal(10) ** decimals)
+                  frm = str(row.get('fromAddress') or row.get('from') or '').lower()
+                  to = str(row.get('toAddress') or row.get('to') or '').lower()
+                  ts = parse_ts(row.get('timestamp'))
+                  direction = 'OTHER'
+                  if to == CANDIDATE.lower():
+                      net += amount
+                      incoming_total += amount
+                      direction = 'IN'
+                      if first_in is None:
+                          first_in = ts
+                  if frm == CANDIDATE.lower():
+                      net -= amount
+                      outgoing_total += amount
+                      direction = 'OUT' if direction == 'OTHER' else 'SELF'
+                  print(json.dumps({
+                      'timestamp': ts.isoformat() if ts else row.get('timestamp'),
+                      'blockNumber': row.get('blockNumber'),
+                      'txHash': row.get('txHash'),
+                      'from': frm,
+                      'to': to,
+                      'direction': direction,
+                      'amount': str(amount),
+                      'running_net': str(net),
+                  }, sort_keys=True))
+              print(label, 'first_incoming =', first_in.isoformat() if first_in else None)
+              print(label, 'incoming_total =', incoming_total)
+              print(label, 'outgoing_total =', outgoing_total)
+              print(label, 'net_from_indexed_transfers =', net)
+              return first_in, incoming_total, outgoing_total, net
 
-          hp = datasets.get('honeypot', {})
-          hp_rows = hp if isinstance(hp, list) else (hp.get('holders') or hp.get('data') or [])
-          if isinstance(hp_rows, dict):
-              hp_rows = hp_rows.get('holders') or hp_rows.get('items') or []
-          for item in hp_rows if isinstance(hp_rows, list) else []:
-              address = str(item.get('address') or item.get('holder') or '').lower()
-              raw = item.get('balance') or item.get('amount') or item.get('value') or '0'
-              try:
-                  bal = Decimal(str(raw))
-                  if bal > Decimal('100000000000000000000'):
-                      bal /= Decimal(10) ** 18
-              except Exception:
-                  continue
-              rows.append({'source':'honeypot','address':address,'balance_cets':bal,'percentage':item.get('percentage') or item.get('percent')})
+          cets_rows = bnbscan_transfers(TOKEN)
+          cets_summary = summarize(cets_rows, 18, 'CETS')
 
-          gp_token = datasets.get('goplus', {}).get('result', {}).get(TOKEN.lower(), {})
-          for item in gp_token.get('holders', []) or []:
-              address = str(item.get('address', '')).lower()
-              try:
-                  bal = Decimal(str(item.get('balance', '0')))
-              except Exception:
-                  continue
-              rows.append({'source':'goplus','address':address,'balance_cets':bal,'percentage':item.get('percent')})
+          xaut_rows = bnbscan_transfers(XAUT)
+          xaut_summary = summarize(xaut_rows, 6, 'XAUT')
 
-          clean = []
-          seen = set()
-          for row in rows:
-              key = (row['source'], row['address'])
-              if not row['address'] or key in seen:
-                  continue
-              seen.add(key)
-              row['difference'] = row['balance_cets'] - TARGET
-              row['absolute_difference'] = abs(row['difference'])
-              row['ends_in_2'] = row['address'].endswith('2')
-              clean.append(row)
-
-          clean.sort(key=lambda r: r['absolute_difference'])
-          print('\n===== CLOSEST HOLDERS TO INFERRED 15,547,486.615516104 CETS =====')
-          for row in clean[:40]:
-              out = dict(row)
-              for k in ('balance_cets','difference','absolute_difference'):
-                  out[k] = str(out[k])
-              print(json.dumps(out, sort_keys=True))
-
-          print('\n===== HOLDERS ENDING IN 2 =====')
-          ending = sorted((r for r in clean if r['ends_in_2']), key=lambda r: r['absolute_difference'])
-          for row in ending[:40]:
-              out = dict(row)
-              for k in ('balance_cets','difference','absolute_difference'):
-                  out[k] = str(out[k])
-              print(json.dumps(out, sort_keys=True))
+          # Totals through the card date, independent of whether later transfers exist.
+          for rows, decimals, label in ((cets_rows, 18, 'CETS'), (xaut_rows, 6, 'XAUT')):
+              incoming = Decimal(0)
+              outgoing = Decimal(0)
+              first_in = None
+              for row in rows:
+                  ts = parse_ts(row.get('timestamp'))
+                  if ts is None or ts >= CARD_CUTOFF:
+                      continue
+                  amount = Decimal(str(row.get('value', '0'))) / (Decimal(10) ** decimals)
+                  frm = str(row.get('fromAddress') or '').lower()
+                  to = str(row.get('toAddress') or '').lower()
+                  if to == CANDIDATE.lower():
+                      incoming += amount
+                      if first_in is None or ts < first_in:
+                          first_in = ts
+                  if frm == CANDIDATE.lower():
+                      outgoing += amount
+              print(f'\n===== {label} THROUGH CARD CUTOFF {CARD_CUTOFF.isoformat()} =====')
+              print('first_incoming_before_cutoff =', first_in.isoformat() if first_in else None)
+              print('incoming_before_cutoff =', incoming)
+              print('outgoing_before_cutoff =', outgoing)
+              print('net_before_cutoff =', incoming - outgoing)
           PY
           python /tmp/cets_research.py
