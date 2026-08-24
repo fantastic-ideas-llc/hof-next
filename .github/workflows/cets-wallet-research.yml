@@ -1,0 +1,121 @@
+name: CETS wallet research
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/cets-wallet-research.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  investigate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch holder datasets and rank candidates
+        shell: bash
+        run: |
+          cat > /tmp/cets_research.py <<'PY'
+          import json
+          import urllib.parse
+          import urllib.request
+          from decimal import Decimal
+
+          TOKEN = '0xB0c2aB5af4028461acE3f6e1C33a4eE1404E7777'
+          TARGET = Decimal('15547486.615516104')
+
+          def get_json(url):
+              req = urllib.request.Request(url, headers={
+                  'Accept': 'application/json',
+                  'User-Agent': 'Mozilla/5.0 CETSResearch/1.0',
+              })
+              with urllib.request.urlopen(req, timeout=60) as r:
+                  body = r.read().decode('utf-8')
+                  print(f'FETCH {url} -> {r.status}, {len(body)} bytes')
+                  return json.loads(body)
+
+          datasets = {}
+          urls = {
+              'routescan': f'https://api.routescan.io/v2/network/mainnet/evm/56/erc20/{TOKEN}/holders?limit=100&count=true',
+              'honeypot': f'https://api.honeypot.is/v1/TopHolders?address={TOKEN}&chainID=56',
+              'goplus': 'https://api.gopluslabs.io/api/v1/token_security/56?' + urllib.parse.urlencode({'contract_addresses': TOKEN.lower()}),
+          }
+
+          for name, url in urls.items():
+              try:
+                  datasets[name] = get_json(url)
+              except Exception as exc:
+                  print(f'ERROR {name}: {type(exc).__name__}: {exc}')
+                  datasets[name] = {'error': str(exc)}
+
+          print('\n===== RAW DATASETS =====')
+          for name, data in datasets.items():
+              print(f'--- {name} ---')
+              print(json.dumps(data, indent=2)[:50000])
+
+          rows = []
+
+          for item in datasets.get('routescan', {}).get('items', []) or []:
+              try:
+                  bal = Decimal(str(item.get('balance', '0'))) / (Decimal(10) ** 18)
+              except Exception:
+                  continue
+              rows.append({'source':'routescan','address':str(item.get('address','')).lower(),'balance_cets':bal,'percentage':item.get('percentage')})
+
+          hp = datasets.get('honeypot', {})
+          hp_rows = hp if isinstance(hp, list) else (hp.get('holders') or hp.get('data') or [])
+          if isinstance(hp_rows, dict):
+              hp_rows = hp_rows.get('holders') or hp_rows.get('items') or []
+          for item in hp_rows if isinstance(hp_rows, list) else []:
+              address = str(item.get('address') or item.get('holder') or '').lower()
+              raw = item.get('balance') or item.get('amount') or item.get('value') or '0'
+              try:
+                  bal = Decimal(str(raw))
+                  if bal > Decimal('100000000000000000000'):
+                      bal /= Decimal(10) ** 18
+              except Exception:
+                  continue
+              rows.append({'source':'honeypot','address':address,'balance_cets':bal,'percentage':item.get('percentage') or item.get('percent')})
+
+          gp_token = datasets.get('goplus', {}).get('result', {}).get(TOKEN.lower(), {})
+          for item in gp_token.get('holders', []) or []:
+              address = str(item.get('address', '')).lower()
+              try:
+                  bal = Decimal(str(item.get('balance', '0')))
+              except Exception:
+                  continue
+              rows.append({'source':'goplus','address':address,'balance_cets':bal,'percentage':item.get('percent')})
+
+          clean = []
+          seen = set()
+          for row in rows:
+              key = (row['source'], row['address'])
+              if not row['address'] or key in seen:
+                  continue
+              seen.add(key)
+              row['difference'] = row['balance_cets'] - TARGET
+              row['absolute_difference'] = abs(row['difference'])
+              row['ends_in_2'] = row['address'].endswith('2')
+              clean.append(row)
+
+          clean.sort(key=lambda r: r['absolute_difference'])
+          print('\n===== CLOSEST HOLDERS TO INFERRED 15,547,486.615516104 CETS =====')
+          for row in clean[:40]:
+              out = dict(row)
+              for k in ('balance_cets','difference','absolute_difference'):
+                  out[k] = str(out[k])
+              print(json.dumps(out, sort_keys=True))
+
+          print('\n===== HOLDERS ENDING IN 2 =====')
+          ending = sorted((r for r in clean if r['ends_in_2']), key=lambda r: r['absolute_difference'])
+          for row in ending[:40]:
+              out = dict(row)
+              for k in ('balance_cets','difference','absolute_difference'):
+                  out[k] = str(out[k])
+              print(json.dumps(out, sort_keys=True))
+          PY
+          python /tmp/cets_research.py
